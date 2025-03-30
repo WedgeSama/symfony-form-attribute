@@ -331,6 +331,7 @@ return static function (ContainerConfigurator $container) {
                 [], // All type extensions are stored here by FormPass
                 [], // All type guessers are stored here by FormPass
                 service('debug.file_link_formatter')->nullOnInvalid(),
+                [], // All metadata form types are stored here by FormPass
             ])
             ->tag('console.command')
 

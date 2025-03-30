@@ -730,6 +730,7 @@ class ConfigurationTest extends TestCase
                     'field_attr' => ['data-controller' => 'csrf-protection'],
                     'token_id' => null,
                 ],
+                'use_attribute' => true,
             ],
             'esi' => ['enabled' => false],
             'ssi' => ['enabled' => false],

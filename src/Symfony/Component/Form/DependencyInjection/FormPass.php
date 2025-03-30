@@ -17,8 +17,11 @@ use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\Compiler\PriorityTaggedServiceTrait;
 use Symfony\Component\DependencyInjection\Compiler\ServiceLocatorTagPass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\Form\Extension\Metadata\Type\MetadataType;
+use Symfony\Component\Form\Metadata\FormMetadataInterface;
 
 /**
  * Adds all services with the tags "form.type", "form.type_extension" and
@@ -46,6 +49,7 @@ class FormPass implements CompilerPassInterface
     {
         // Get service locator argument
         $servicesMap = [];
+        $metadataTypeMap = [];
         $namespaces = ['Symfony\Component\Form\Extension\Core\Type' => true];
         $csrfTokenIds = [];
 
@@ -61,10 +65,37 @@ class FormPass implements CompilerPassInterface
             }
         }
 
+        foreach ($container->getDefinitions() as $id => $definition) {
+            if (!$definition->hasTag('form.metadata.form_type')) {
+                continue;
+            }
+
+            if ($definition->isAbstract()) {
+                throw new InvalidArgumentException(\sprintf('The resource "%s" tagged "form.metadata.form_type" must not be abstract.', $id));
+            }
+
+            $className = $container->getDefinition($id)->getClass();
+            $formTypeId = $id.'.form_type';
+            $metadataId = $id.'.metadata';
+
+            $container->setDefinition($metadataId, new Definition(FormMetadataInterface::class))
+                ->setFactory([new Reference('form.metadata.default_loader'), 'load'])
+                ->addArgument($className)
+                ->addTag('form.metadata');
+
+            $container->setDefinition($formTypeId, new Definition(MetadataType::class))
+                ->addArgument(new Reference($metadataId))
+                ->addTag('form.metadata_type', ['class_name' => $className]);
+
+            $metadataTypeMap[$className] = new Reference($formTypeId);
+            $namespaces[substr($className, 0, strrpos($className, '\\'))] = true;
+        }
+
         if ($container->hasDefinition('console.command.form_debug')) {
             $commandDefinition = $container->getDefinition('console.command.form_debug');
             $commandDefinition->setArgument(1, array_keys($namespaces));
             $commandDefinition->setArgument(2, array_keys($servicesMap));
+            $commandDefinition->setArgument(6, array_keys($metadataTypeMap));
         }
 
         if ($csrfTokenIds && $container->hasDefinition('form.type_extension.csrf')) {
@@ -75,7 +106,7 @@ class FormPass implements CompilerPassInterface
             }
         }
 
-        return ServiceLocatorTagPass::register($container, $servicesMap);
+        return ServiceLocatorTagPass::register($container, [...$servicesMap, ...$metadataTypeMap]);
     }
 
     private function processFormTypeExtensions(ContainerBuilder $container): array

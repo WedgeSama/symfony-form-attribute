@@ -69,6 +69,7 @@ use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\Glob;
+use Symfony\Component\Form\Attribute\AsFormType;
 use Symfony\Component\Form\Extension\Validator\ValidatorExtension;
 use Symfony\Component\Form\Extension\Validator\ViolationMapper\ViolationMapperInterface;
 use Symfony\Component\Form\Form;
@@ -828,6 +829,14 @@ class FrameworkExtension extends Extension
             $container->setParameter('.form.type_extension.csrf.token_id', $config['form']['csrf_protection']['token_id']);
         } else {
             $container->setParameter('form.type_extension.csrf.enabled', false);
+        }
+
+        if ($config['form']['use_attribute']) {
+            $loader->load('form_metadata.php');
+
+            $container->registerAttributeForAutoconfiguration(AsFormType::class, static function (ChildDefinition $definition) {
+                $definition->addResourceTag('form.metadata.form_type');
+            });
         }
 
         if (!ContainerBuilder::willBeAvailable('symfony/translation', Translator::class, ['symfony/framework-bundle', 'symfony/form'])) {

@@ -18,11 +18,13 @@ use Symfony\Component\Form\Exception\TransformationFailedException;
 use Symfony\Component\Form\Extension\Core\DataMapper\DataMapper;
 use Symfony\Component\Form\Extension\Core\Type\HiddenType;
 use Symfony\Component\Form\Extension\DataCollector\FormDataExtractor;
+use Symfony\Component\Form\Extension\Metadata\Type\MetadataType;
 use Symfony\Component\Form\FormBuilder;
 use Symfony\Component\Form\FormError;
 use Symfony\Component\Form\FormFactory;
 use Symfony\Component\Form\FormRegistry;
 use Symfony\Component\Form\FormView;
+use Symfony\Component\Form\Metadata\FormMetadata;
 use Symfony\Component\Form\ResolvedFormType;
 use Symfony\Component\Form\ResolvedFormTypeFactory;
 use Symfony\Component\Form\Tests\Fixtures\FixedDataTransformer;
@@ -413,6 +415,22 @@ class FormDataExtractorTest extends TestCase
                 'name' => 'bar',
             ],
         ], $this->dataExtractor->extractViewVariables($view));
+    }
+
+    public function testTypeClassWithMetadata()
+    {
+        $form = $this->createBuilder('name')
+            ->setType(new ResolvedFormType(new MetadataType(new FormMetadata('Foo'))))
+            ->getForm();
+
+        $this->assertSame([
+            'id' => 'name',
+            'name' => 'name',
+            'type_class' => 'Foo',
+            'synchronized' => true,
+            'passed_options' => [],
+            'resolved_options' => [],
+        ], $this->dataExtractor->extractConfiguration($form));
     }
 
     private function createBuilder(string $name, array $options = []): FormBuilder

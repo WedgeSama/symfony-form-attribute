@@ -76,7 +76,15 @@ class FormPassTest extends TestCase
         $container = $this->createContainerBuilder();
 
         $container->register('form.registry', FormRegistry::class);
-        $commandDefinition = new Definition(DebugCommand::class, [new Reference('form.registry')]);
+        $commandDefinition = new Definition(DebugCommand::class, [
+            new Reference('form.registry'),
+            [],
+            [],
+            [],
+            [],
+            null,
+            [],
+        ]);
         $commandDefinition->setPublic(true);
 
         $container->setDefinition('form.extension', $this->createExtensionDefinition());
