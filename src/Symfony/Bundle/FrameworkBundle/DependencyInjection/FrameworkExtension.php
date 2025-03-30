@@ -81,6 +81,7 @@ use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\Glob;
+use Symfony\Component\Form\Attribute\AsFormType;
 use Symfony\Component\Form\Extension\HtmlSanitizer\Type\TextTypeHtmlSanitizerExtension;
 use Symfony\Component\Form\Form;
 use Symfony\Component\Form\FormTypeExtensionInterface;
@@ -808,6 +809,9 @@ class FrameworkExtension extends Extension
         });
         $container->registerAttributeForAutoconfiguration(MappedSuperclass::class, static function (ChildDefinition $definition) {
             $definition->addTag('container.excluded', ['source' => 'because it\'s a doctrine mapped superclass'])->setAbstract(true);
+        });
+        $container->registerAttributeForAutoconfiguration(AsFormType::class, static function (ChildDefinition $definition) {
+            $definition->addTag('container.excluded.form.form_type')->addTag('container.excluded')->setAbstract(true);
         });
 
         $container->registerAttributeForAutoconfiguration(JsonStreamable::class, static function (ChildDefinition $definition, JsonStreamable $attribute) {

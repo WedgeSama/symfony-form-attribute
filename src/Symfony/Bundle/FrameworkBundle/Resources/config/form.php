@@ -25,6 +25,7 @@ use Symfony\Component\Form\Extension\DependencyInjection\DependencyInjectionExte
 use Symfony\Component\Form\Extension\HtmlSanitizer\Type\TextTypeHtmlSanitizerExtension;
 use Symfony\Component\Form\Extension\HttpFoundation\HttpFoundationRequestHandler;
 use Symfony\Component\Form\Extension\HttpFoundation\Type\FormTypeHttpFoundationExtension;
+use Symfony\Component\Form\Extension\Metadata\MetadataExtension;
 use Symfony\Component\Form\Extension\Validator\Type\FormTypeValidatorExtension;
 use Symfony\Component\Form\Extension\Validator\Type\RepeatedTypeValidatorExtension;
 use Symfony\Component\Form\Extension\Validator\Type\SubmitTypeValidatorExtension;
@@ -34,6 +35,7 @@ use Symfony\Component\Form\FormFactory;
 use Symfony\Component\Form\FormFactoryInterface;
 use Symfony\Component\Form\FormRegistry;
 use Symfony\Component\Form\FormRegistryInterface;
+use Symfony\Component\Form\Metadata\Loader\AttributeLoader;
 use Symfony\Component\Form\ResolvedFormTypeFactory;
 use Symfony\Component\Form\ResolvedFormTypeFactoryInterface;
 use Symfony\Component\Form\Util\ServerParams;
@@ -47,13 +49,8 @@ return static function (ContainerConfigurator $container) {
         ->set('form.registry', FormRegistry::class)
             ->args([
                 [
-                    /*
-                     * We don't need to be able to add more extensions.
-                     * more types can be registered with the form.type tag
-                     * more type extensions can be registered with the form.type_extension tag
-                     * more type_guessers can be registered with the form.type_guesser tag
-                     */
                     service('form.extension'),
+                    service('form.metadata_extension'),
                 ],
                 service('form.resolved_type_factory'),
             ])
@@ -71,6 +68,9 @@ return static function (ContainerConfigurator $container) {
                 abstract_arg('All services with tag "form.type_extension" are stored here by FormPass'),
                 abstract_arg('All services with tag "form.type_guesser" are stored here by FormPass'),
             ])
+
+        ->set('form.metadata_extension', MetadataExtension::class)
+            ->args([service('form.metadata.default_loader')])
 
         ->set('form.type_guesser.validator', ValidatorTypeGuesser::class)
             ->args([service('validator.mapping.class_metadata_factory')])
@@ -150,5 +150,9 @@ return static function (ContainerConfigurator $container) {
                 param('validator.translation_domain'),
             ])
             ->tag('form.type_extension')
+
+        ->set('form.metadata.attribute_loader', AttributeLoader::class)
+
+        ->alias('form.metadata.default_loader', 'form.metadata.attribute_loader')
     ;
 };

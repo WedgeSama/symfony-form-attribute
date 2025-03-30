@@ -15,6 +15,7 @@ use Symfony\Component\Form\Exception\ExceptionInterface;
 use Symfony\Component\Form\Exception\InvalidArgumentException;
 use Symfony\Component\Form\Exception\LogicException;
 use Symfony\Component\Form\Exception\UnexpectedTypeException;
+use Symfony\Component\Form\Extension\Metadata\Type\MetadataType;
 
 /**
  * The central registry of the Form component.
@@ -90,7 +91,7 @@ class FormRegistry implements FormRegistryInterface
     private function resolveType(FormTypeInterface $type): ResolvedFormTypeInterface
     {
         $parentType = $type->getParent();
-        $fqcn = $type::class;
+        $fqcn = $type instanceof MetadataType ? $type->metadata->getClassName() : $type::class;
 
         if (isset($this->checkedTypes[$fqcn])) {
             $types = implode(' > ', array_merge(array_keys($this->checkedTypes), [$fqcn]));
