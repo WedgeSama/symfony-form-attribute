@@ -15,7 +15,6 @@ use Symfony\Component\Form\Exception\ExceptionInterface;
 use Symfony\Component\Form\Exception\InvalidArgumentException;
 use Symfony\Component\Form\Exception\LogicException;
 use Symfony\Component\Form\Exception\UnexpectedTypeException;
-use Symfony\Component\Form\Extension\Metadata\Type\MetadataType;
 
 /**
  * The central registry of the Form component.
