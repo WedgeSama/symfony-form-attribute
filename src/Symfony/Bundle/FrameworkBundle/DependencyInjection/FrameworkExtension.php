@@ -877,6 +877,16 @@ class FrameworkExtension extends Extension
             $container->setParameter('form.type_extension.csrf.enabled', false);
         }
 
+        if ($config['form']['use_attribute']) {
+            $loader->load('form_metadata.php');
+
+            ($registryDef = $container->getDefinition('form.registry'))
+                ->setArgument(0, [
+                    ...$registryDef->getArgument(0),
+                    new Reference('form.metadata_extension'),
+                ]);
+        }
+
         if (!ContainerBuilder::willBeAvailable('symfony/translation', Translator::class, ['symfony/framework-bundle', 'symfony/form'])) {
             $container->removeDefinition('form.type_extension.upload.validator');
         }

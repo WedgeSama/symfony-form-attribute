@@ -18,6 +18,9 @@ namespace Symfony\Component\Form\Metadata;
  */
 interface FormMetadataInterface
 {
+    /**
+     * @return class-string
+     */
     public function getClassName(): string;
 
     public function getParent(): string;

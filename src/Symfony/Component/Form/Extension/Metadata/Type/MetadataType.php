@@ -26,7 +26,7 @@ use Symfony\Component\OptionsResolver\OptionsResolver;
 final readonly class MetadataType implements FormTypeInterface
 {
     public function __construct(
-        public FormMetadataInterface $metadata,
+        private FormMetadataInterface $metadata,
     ) {
     }
 
@@ -59,5 +59,10 @@ final readonly class MetadataType implements FormTypeInterface
     public function getBlockPrefix(): string
     {
         return $this->metadata->getBlockPrefix();
+    }
+
+    public function getClassName(): string
+    {
+        return $this->metadata->getClassName();
     }
 }

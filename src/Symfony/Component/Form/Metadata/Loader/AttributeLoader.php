@@ -76,9 +76,9 @@ final readonly class AttributeLoader implements LoaderInterface
     }
 
     /**
-     * @template T as class-string
+     * @template T as object
      *
-     * @param T $attributeClass
+     * @param class-string<T> $attributeClass
      *
      * @return T
      */
@@ -92,9 +92,9 @@ final readonly class AttributeLoader implements LoaderInterface
     }
 
     /**
-     * @template T as class-string
+     * @template T as object
      *
-     * @param T $attributeClass
+     * @param class-string<T> $attributeClass
      *
      * @return iterable<T>
      */
@@ -113,6 +113,8 @@ final readonly class AttributeLoader implements LoaderInterface
             if ($this->isAsFormType($parent)) {
                 return $parent->getName();
             }
+
+            $reflectionClass = $parent;
         }
 
         return null;

@@ -20,8 +20,7 @@ use Symfony\Component\Form\FormTypeInterface;
 use Symfony\Component\Form\Metadata\Loader\LoaderInterface;
 
 /**
- * Responsible for instantiating FormType from a class where a {@see \Symfony\Component\Form\Attribute\AsFormType}
- * attribute as been used.
+ * Responsible for instantiating FormType based on a {@see \Symfony\Component\Form\Metadata\FormMetadataInterface}
  *
  * @author Benjamin Georgeault <git@wedgesama.fr>
  */
