@@ -16,6 +16,6 @@ namespace Symfony\Component\Form\Exception;
  *
  * @author Benjamin Georgeault <git@wedgesama.fr>
  */
-class MetadataException extends \LogicException implements ExceptionInterface
+class MetadataException extends LogicException
 {
 }
