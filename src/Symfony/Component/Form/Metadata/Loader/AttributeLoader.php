@@ -22,6 +22,8 @@ use Symfony\Component\Form\Metadata\FormMetadataInterface;
  * Load a {@see FormMetadata} from a class where an attribute {@see AsFormType} is applied.
  *
  * @author Benjamin Georgeault <git@wedgesama.fr>
+ *
+ * @template T as object
  */
 final readonly class AttributeLoader implements LoaderInterface
 {
@@ -76,8 +78,6 @@ final readonly class AttributeLoader implements LoaderInterface
     }
 
     /**
-     * @template T as object
-     *
      * @param class-string<T> $attributeClass
      *
      * @return T
@@ -92,8 +92,6 @@ final readonly class AttributeLoader implements LoaderInterface
     }
 
     /**
-     * @template T as object
-     *
      * @param class-string<T> $attributeClass
      *
      * @return iterable<T>
