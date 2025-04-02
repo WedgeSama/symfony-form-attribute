@@ -810,9 +810,6 @@ class FrameworkExtension extends Extension
         $container->registerAttributeForAutoconfiguration(MappedSuperclass::class, static function (ChildDefinition $definition) {
             $definition->addTag('container.excluded', ['source' => 'because it\'s a doctrine mapped superclass'])->setAbstract(true);
         });
-        $container->registerAttributeForAutoconfiguration(AsFormType::class, static function (ChildDefinition $definition) {
-            $definition->addTag('container.excluded.form.form_type')->addTag('container.excluded')->setAbstract(true);
-        });
 
         $container->registerAttributeForAutoconfiguration(JsonStreamable::class, static function (ChildDefinition $definition, JsonStreamable $attribute) {
             $definition->addTag('json_streamer.streamable', [
@@ -880,11 +877,13 @@ class FrameworkExtension extends Extension
         if ($config['form']['use_attribute']) {
             $loader->load('form_metadata.php');
 
-            ($registryDef = $container->getDefinition('form.registry'))
-                ->setArgument(0, [
-                    ...$registryDef->getArgument(0),
-                    new Reference('form.metadata_extension'),
-                ]);
+            $container->registerAttributeForAutoconfiguration(AsFormType::class, static function (ChildDefinition $definition, AsFormType $attribute, \ReflectionClass $ref) {
+                $definition
+                    ->addTag('container.excluded.form.metadata.form_type', ['class_name' => $ref->getName()])
+                    ->addTag('container.excluded')
+                    ->setAbstract(true)
+                ;
+            });
         }
 
         if (!ContainerBuilder::willBeAvailable('symfony/translation', Translator::class, ['symfony/framework-bundle', 'symfony/form'])) {

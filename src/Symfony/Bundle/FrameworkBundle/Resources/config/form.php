@@ -47,6 +47,12 @@ return static function (ContainerConfigurator $container) {
         ->set('form.registry', FormRegistry::class)
             ->args([
                 [
+                    /*
+                     * We don't need to be able to add more extensions.
+                     * more types can be registered with the form.type tag
+                     * more type extensions can be registered with the form.type_extension tag
+                     * more type_guessers can be registered with the form.type_guesser tag
+                     */
                     service('form.extension'),
                 ],
                 service('form.resolved_type_factory'),

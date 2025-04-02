@@ -16,9 +16,6 @@ use Symfony\Component\Form\Metadata\Loader\AttributeLoader;
 
 return static function (ContainerConfigurator $container) {
     $container->services()
-        ->set('form.metadata_extension', MetadataExtension::class)
-            ->args([service('form.metadata.default_loader')])
-
         ->set('form.metadata.attribute_loader', AttributeLoader::class)
 
         ->alias('form.metadata.default_loader', 'form.metadata.attribute_loader')
