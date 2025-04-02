@@ -42,6 +42,7 @@ class DebugCommand extends Command
         private array $extensions = [],
         private array $guessers = [],
         private ?FileLinkFormatter $fileLinkFormatter = null,
+        private array $metadataTypes = [],
     ) {
         parent::__construct();
     }
@@ -95,6 +96,7 @@ EOF
             $object = null;
             $options['core_types'] = $this->getCoreTypes();
             $options['service_types'] = array_values(array_diff($this->types, $options['core_types']));
+            $options['metadata_types'] = $this->metadataTypes;
             if ($input->getOption('show-deprecated')) {
                 $options['core_types'] = $this->filterTypesByDeprecated($options['core_types']);
                 $options['service_types'] = $this->filterTypesByDeprecated($options['service_types']);
@@ -150,7 +152,7 @@ EOF
         if (0 === $count = \count($classes)) {
             $message = \sprintf("Could not find type \"%s\" into the following namespaces:\n    %s", $shortClassName, implode("\n    ", $this->namespaces));
 
-            $allTypes = array_merge($this->getCoreTypes(), $this->types);
+            $allTypes = array_merge($this->getCoreTypes(), $this->types, $this->metadataTypes);
             if ($alternatives = $this->findAlternatives($shortClassName, $allTypes)) {
                 if (1 === \count($alternatives)) {
                     $message .= "\n\nDid you mean this?\n    ";
@@ -238,7 +240,7 @@ EOF
     public function complete(CompletionInput $input, CompletionSuggestions $suggestions): void
     {
         if ($input->mustSuggestArgumentValuesFor('class')) {
-            $suggestions->suggestValues(array_merge($this->getCoreTypes(), $this->types));
+            $suggestions->suggestValues(array_merge($this->getCoreTypes(), $this->types, $this->metadataTypes));
 
             return;
         }
