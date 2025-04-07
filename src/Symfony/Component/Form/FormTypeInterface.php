@@ -95,4 +95,11 @@ interface FormTypeInterface
      * @return string
      */
     public function getBlockPrefix();
+
+    /**
+     * Returns the FQCN of the class representing the FormType.
+     *
+     * @return class-string
+     */
+    public function getClassName(): string;
 }

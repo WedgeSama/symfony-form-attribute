@@ -81,6 +81,7 @@ use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\Glob;
+use Symfony\Component\Form\Attribute\AsFormType;
 use Symfony\Component\Form\Extension\HtmlSanitizer\Type\TextTypeHtmlSanitizerExtension;
 use Symfony\Component\Form\Form;
 use Symfony\Component\Form\FormTypeExtensionInterface;
@@ -871,6 +872,18 @@ class FrameworkExtension extends Extension
             $container->setParameter('.form.type_extension.csrf.token_id', $config['form']['csrf_protection']['token_id']);
         } else {
             $container->setParameter('form.type_extension.csrf.enabled', false);
+        }
+
+        if ($config['form']['use_attribute']) {
+            $loader->load('form_metadata.php');
+
+            $container->registerAttributeForAutoconfiguration(AsFormType::class, static function (ChildDefinition $definition, AsFormType $attribute, \ReflectionClass $ref) {
+                $definition
+                    ->addTag('container.excluded.form.metadata.form_type', ['class_name' => $ref->getName()])
+                    ->addTag('container.excluded')
+                    ->setAbstract(true)
+                ;
+            });
         }
 
         if (!ContainerBuilder::willBeAvailable('symfony/translation', Translator::class, ['symfony/framework-bundle', 'symfony/form'])) {

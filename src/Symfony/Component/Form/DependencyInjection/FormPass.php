@@ -17,8 +17,11 @@ use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\Compiler\PriorityTaggedServiceTrait;
 use Symfony\Component\DependencyInjection\Compiler\ServiceLocatorTagPass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\Form\Extension\Metadata\Type\MetadataType;
+use Symfony\Component\Form\Metadata\FormMetadataInterface;
 
 /**
  * Adds all services with the tags "form.type", "form.type_extension" and
@@ -59,6 +62,28 @@ class FormPass implements CompilerPassInterface
             if (isset($tag[0]['csrf_token_id'])) {
                 $csrfTokenIds[$formType] = $tag[0]['csrf_token_id'];
             }
+        }
+
+        foreach ($container->findTaggedResourceIds('container.excluded.form.metadata.form_type') as $excludedServiceId => $tag) {
+            if (!isset($tag[0]['class_name'])) {
+                throw new InvalidArgumentException(\sprintf('The excluded service "%s" with tag "container.excluded.form.metadata.form_type" must have the tag\'s attribute "class_name" set.', $excludedServiceId));
+            }
+
+            $className = $tag[0]['class_name'];
+            $formTypeId = $excludedServiceId . '.form_type';
+            $metadataId = $excludedServiceId . '.metadata';
+
+            $container->setDefinition($metadataId, new Definition(FormMetadataInterface::class))
+                ->setFactory([new Reference('form.metadata.default_loader'), 'load'])
+                ->addArgument($className)
+                ->addTag('form.metadata');
+
+            $container->setDefinition($formTypeId, new Definition(MetadataType::class))
+                ->addArgument(new Reference($metadataId))
+                ->addTag('form.metadata_type', ['class_name' => $className]);
+
+            $servicesMap[$className] = new Reference($formTypeId);
+            $namespaces[substr($className, 0, strrpos($className, '\\'))] = true;
         }
 
         if ($container->hasDefinition('console.command.form_debug')) {
