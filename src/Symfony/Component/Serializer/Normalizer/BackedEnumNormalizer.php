@@ -56,30 +56,35 @@ final class BackedEnumNormalizer implements NormalizerInterface, DenormalizerInt
             throw new InvalidArgumentException('The data must belong to a backed enumeration.');
         }
 
-        if ($context[self::ALLOW_INVALID_VALUES] ?? false) {
-            if (null === $data || (!\is_int($data) && !\is_string($data))) {
-                return null;
-            }
-
-            try {
-                return $type::tryFrom($data);
-            } catch (\TypeError) {
-                return null;
-            }
-        }
+        $allowInvalidValues = $context[self::ALLOW_INVALID_VALUES] ?? false;
 
         if (!\is_int($data) && !\is_string($data)) {
+            if ($allowInvalidValues) {
+                return null;
+            }
+
             throw NotNormalizableValueException::createForUnexpectedDataType('The data is neither an integer nor a string, you should pass an integer or a string that can be parsed as an enumeration case of type '.$type.'.', $data, ['int', 'string'], $context['deserialization_path'] ?? null, true);
         }
 
         try {
             return $type::from($data);
-        } catch (\ValueError $e) {
-            if (isset($context['has_constructor'])) {
-                throw new InvalidArgumentException('The data must belong to a backed enumeration of type '.$type, 0, $e);
+        } catch (\ValueError|\TypeError $e) {
+            if ($allowInvalidValues) {
+                return null;
             }
 
-            throw NotNormalizableValueException::createForUnexpectedDataType('The data must belong to a backed enumeration of type '.$type, $data, [$type], $context['deserialization_path'] ?? null, true, 0, $e);
+            $backingType = (new \ReflectionEnum($type))->getBackingType()->getName();
+
+            if ($e instanceof \TypeError || get_debug_type($data) !== $backingType) {
+                throw NotNormalizableValueException::createForUnexpectedDataType('The data must be of type '.$backingType, $data, [$backingType], $context['deserialization_path'] ?? null, true, 0, $e);
+            }
+
+            $expectedValues = array_map(
+                static fn ($case) => \sprintf('%s%s%1$s', \is_string($case->value) ? '"' : '', $case->value),
+                $type::cases(),
+            );
+
+            throw new NotNormalizableValueException('The data must be one of the following values: '.implode(', ', $expectedValues), 0, $e, get_debug_type($data), null, $context['deserialization_path'] ?? null, true);
         }
     }
 

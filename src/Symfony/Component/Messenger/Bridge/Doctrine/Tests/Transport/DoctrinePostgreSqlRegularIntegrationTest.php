@@ -13,9 +13,10 @@ namespace Symfony\Component\Messenger\Bridge\Doctrine\Tests\Transport;
 
 use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\DriverManager;
-use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\DefaultSchemaManagerFactory;
 use Doctrine\DBAL\Tools\DsnParser;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Messenger\Bridge\Doctrine\Tests\Fixtures\DummyMessage;
 use Symfony\Component\Messenger\Bridge\Doctrine\Transport\Connection;
@@ -23,11 +24,9 @@ use Symfony\Component\Messenger\Bridge\Doctrine\Transport\Connection;
 /**
  * This tests a using Doctrine PostgreSql connection without using PostgreSqlConnection
  * that gets used when use_notify is enabled.
- *
- * @requires extension pdo_pgsql
- *
- * @group integration
  */
+#[RequiresPhpExtension('pdo_pgsql')]
+#[Group('integration')]
 class DoctrinePostgreSqlRegularIntegrationTest extends TestCase
 {
     private \Doctrine\DBAL\Connection $driverConnection;
@@ -38,8 +37,8 @@ class DoctrinePostgreSqlRegularIntegrationTest extends TestCase
         $this->connection->send('{"message": "Hi"}', ['type' => DummyMessage::class]);
 
         $encoded = $this->connection->get();
-        $this->assertSame('{"message": "Hi"}', $encoded['body']);
-        $this->assertSame(['type' => DummyMessage::class], $encoded['headers']);
+        $this->assertSame('{"message": "Hi"}', $encoded[0]['body']);
+        $this->assertSame(['type' => DummyMessage::class], $encoded[0]['headers']);
 
         $this->assertNull($this->connection->get());
     }
@@ -51,8 +50,8 @@ class DoctrinePostgreSqlRegularIntegrationTest extends TestCase
         $this->connection->send('{"message": "Hi"}', ['type' => DummyMessage::class]);
 
         $encoded = $this->connection->get();
-        $this->assertSame('{"message": "Hi"}', $encoded['body']);
-        $this->assertSame(['type' => DummyMessage::class], $encoded['headers']);
+        $this->assertSame('{"message": "Hi"}', $encoded[0]['body']);
+        $this->assertSame(['type' => DummyMessage::class], $encoded[0]['headers']);
 
         $this->assertNull($this->connection->get());
     }
@@ -65,8 +64,8 @@ class DoctrinePostgreSqlRegularIntegrationTest extends TestCase
         $connection->send('{"message": "Hi"}', ['type' => DummyMessage::class]);
 
         $encoded = $connection->get();
-        $this->assertSame('{"message": "Hi"}', $encoded['body']);
-        $this->assertSame(['type' => DummyMessage::class], $encoded['headers']);
+        $this->assertSame('{"message": "Hi"}', $encoded[0]['body']);
+        $this->assertSame(['type' => DummyMessage::class], $encoded[0]['headers']);
 
         $this->assertNull($this->connection->get());
     }
@@ -78,11 +77,9 @@ class DoctrinePostgreSqlRegularIntegrationTest extends TestCase
         }
 
         $url = "pdo-pgsql://postgres:password@$host";
-        $params = class_exists(DsnParser::class) ? (new DsnParser())->parse($url) : ['url' => $url];
+        $params = (new DsnParser())->parse($url);
         $config = new Configuration();
-        if (class_exists(DefaultSchemaManagerFactory::class)) {
-            $config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
-        }
+        $config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
 
         $this->driverConnection = DriverManager::getConnection($params, $config);
         $this->connection = new Connection(['table_name' => 'queue_table'], $this->driverConnection);
@@ -90,14 +87,10 @@ class DoctrinePostgreSqlRegularIntegrationTest extends TestCase
 
     protected function tearDown(): void
     {
-        $this->createSchemaManager()->dropTable('queue_table');
+        if (!isset($this->driverConnection)) {
+            return;
+        }
+        $this->driverConnection->createSchemaManager()->dropTable('queue_table');
         $this->driverConnection->close();
-    }
-
-    private function createSchemaManager(): AbstractSchemaManager
-    {
-        return method_exists($this->driverConnection, 'createSchemaManager')
-            ? $this->driverConnection->createSchemaManager()
-            : $this->driverConnection->getSchemaManager();
     }
 }

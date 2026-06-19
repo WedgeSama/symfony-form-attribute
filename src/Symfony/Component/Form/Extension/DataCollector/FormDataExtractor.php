@@ -13,6 +13,7 @@ namespace Symfony\Component\Form\Extension\DataCollector;
 
 use Symfony\Component\Form\FormInterface;
 use Symfony\Component\Form\FormView;
+use Symfony\Component\Form\MetadataFormTypeInterface;
 use Symfony\Component\Validator\ConstraintViolationInterface;
 
 /**
@@ -24,10 +25,12 @@ class FormDataExtractor implements FormDataExtractorInterface
 {
     public function extractConfiguration(FormInterface $form): array
     {
+        $innerType = $form->getConfig()->getType()->getInnerType();
+
         $data = [
             'id' => $this->buildId($form),
             'name' => $form->getName(),
-            'type_class' => $form->getConfig()->getType()->getInnerType()::class,
+            'type_class' => $innerType instanceof MetadataFormTypeInterface ? $innerType->getClassName() : $innerType::class,
             'synchronized' => $form->isSynchronized(),
             'passed_options' => [],
             'resolved_options' => [],
@@ -98,7 +101,7 @@ class FormDataExtractor implements FormDataExtractorInterface
             while (null !== $cause) {
                 if ($cause instanceof ConstraintViolationInterface) {
                     $errorData['trace'][] = $cause;
-                    $cause = method_exists($cause, 'getCause') ? $cause->getCause() : null;
+                    $cause = $cause->getCause();
 
                     continue;
                 }

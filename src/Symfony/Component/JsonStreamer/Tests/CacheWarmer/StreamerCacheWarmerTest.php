@@ -12,10 +12,12 @@
 namespace Symfony\Component\JsonStreamer\Tests\CacheWarmer;
 
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Symfony\Component\JsonStreamer\CacheWarmer\StreamerCacheWarmer;
 use Symfony\Component\JsonStreamer\Mapping\PropertyMetadataLoader;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\ClassicDummy;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNameAttributes;
+use Symfony\Component\JsonStreamer\Tests\ServiceContainer;
 use Symfony\Component\TypeInfo\TypeResolver\TypeResolver;
 
 class StreamerCacheWarmerTest extends TestCase
@@ -50,17 +52,17 @@ class StreamerCacheWarmerTest extends TestCase
 
         $this->assertSame([
             \sprintf('%s/13791ba3dc4369dc488ec78466326979.json.php', $this->streamWritersDir),
+            \sprintf('%s/30812f0966dfa8321b2976fca874c2c6.json.php', $this->streamWritersDir),
             \sprintf('%s/3d6bea319060b50305c349746ac6cabc.json.php', $this->streamWritersDir),
-            \sprintf('%s/6f7c0ed338bb3b8730cc67686a91941b.json.php', $this->streamWritersDir),
         ], glob($this->streamWritersDir.'/*'));
 
         $this->assertSame([
             \sprintf('%s/13791ba3dc4369dc488ec78466326979.json.php', $this->streamReadersDir),
             \sprintf('%s/13791ba3dc4369dc488ec78466326979.json.stream.php', $this->streamReadersDir),
+            \sprintf('%s/30812f0966dfa8321b2976fca874c2c6.json.php', $this->streamReadersDir),
+            \sprintf('%s/30812f0966dfa8321b2976fca874c2c6.json.stream.php', $this->streamReadersDir),
             \sprintf('%s/3d6bea319060b50305c349746ac6cabc.json.php', $this->streamReadersDir),
             \sprintf('%s/3d6bea319060b50305c349746ac6cabc.json.stream.php', $this->streamReadersDir),
-            \sprintf('%s/6f7c0ed338bb3b8730cc67686a91941b.json.php', $this->streamReadersDir),
-            \sprintf('%s/6f7c0ed338bb3b8730cc67686a91941b.json.stream.php', $this->streamReadersDir),
         ], glob($this->streamReadersDir.'/*'));
     }
 
@@ -77,6 +79,9 @@ class StreamerCacheWarmerTest extends TestCase
             new PropertyMetadataLoader($typeResolver),
             $this->streamWritersDir,
             $this->streamReadersDir,
+            new NullLogger(),
+            null,
+            new ServiceContainer(),
         );
     }
 }

@@ -105,7 +105,7 @@ class ArrayChoiceList implements ChoiceListInterface
         $choices = [];
 
         foreach ($values as $i => $givenValue) {
-            if (\array_key_exists($givenValue, $this->choices)) {
+            if (\array_key_exists($givenValue ?? '', $this->choices)) {
                 $choices[$i] = $this->choices[$givenValue];
             }
         }
@@ -151,6 +151,8 @@ class ArrayChoiceList implements ChoiceListInterface
      * @param array|null $keysByValues     The original keys indexed by the
      *                                     corresponding values
      * @param array|null $structuredValues The values indexed by the original keys
+     *
+     * @param-immediately-invoked-callable $value
      *
      * @internal
      */

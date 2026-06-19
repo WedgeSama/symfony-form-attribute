@@ -11,8 +11,9 @@
 
 namespace Symfony\Bundle\TwigBundle\Tests\DependencyInjection;
 
-use Symfony\Bridge\PhpUnit\ExpectUserDeprecationMessageTrait;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\TwigBundle\DependencyInjection\Compiler\RuntimeLoaderPass;
+use Symfony\Bundle\TwigBundle\DependencyInjection\Compiler\SafeClassPass;
 use Symfony\Bundle\TwigBundle\DependencyInjection\TwigExtension;
 use Symfony\Bundle\TwigBundle\Tests\DependencyInjection\AcmeBundle\AcmeBundle;
 use Symfony\Bundle\TwigBundle\Tests\TestCase;
@@ -20,7 +21,6 @@ use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
-use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBag;
 use Symfony\Component\DependencyInjection\Reference;
@@ -30,11 +30,10 @@ use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Stopwatch\Stopwatch;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Twig\Environment;
+use Twig\Runtime\EscaperRuntime;
 
 class TwigExtensionTest extends TestCase
 {
-    use ExpectUserDeprecationMessageTrait;
-
     public function testLoadEmptyConfiguration()
     {
         $container = $this->createContainer();
@@ -42,7 +41,7 @@ class TwigExtensionTest extends TestCase
         $container->loadFromExtension('twig');
         $this->compileContainer($container);
 
-        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.xml file');
+        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.php file');
 
         $this->assertContains('form_div_layout.html.twig', $container->getParameter('twig.form.resources'), '->load() includes default template for form resources');
 
@@ -63,9 +62,7 @@ class TwigExtensionTest extends TestCase
         }
     }
 
-    /**
-     * @dataProvider getFormatsAndBuildDir
-     */
+    #[DataProvider('getFormatsAndBuildDir')]
     public function testLoadFullConfiguration(string $format, ?string $buildDir)
     {
         $container = $this->createContainer($buildDir);
@@ -73,7 +70,7 @@ class TwigExtensionTest extends TestCase
         $this->loadFromFile($container, 'full', $format);
         $this->compileContainer($container);
 
-        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.xml file');
+        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.php file');
 
         // Form resources
         $resources = $container->getParameter('twig.form.resources');
@@ -90,12 +87,8 @@ class TwigExtensionTest extends TestCase
         $this->assertEquals('@qux', $calls[3][1][1], '->load() allows escaping of service identifiers');
         $this->assertEquals('pi', $calls[4][1][0], '->load() registers variables as Twig globals');
         $this->assertEquals(3.14, $calls[4][1][1], '->load() registers variables as Twig globals');
-
-        // Yaml and Php specific configs
-        if (\in_array($format, ['yml', 'php'])) {
-            $this->assertEquals('bad', $calls[5][1][0], '->load() registers variables as Twig globals');
-            $this->assertEquals(['key' => 'foo'], $calls[5][1][1], '->load() registers variables as Twig globals');
-        }
+        $this->assertEquals('bad', $calls[5][1][0], '->load() registers variables as Twig globals');
+        $this->assertEquals(['key' => 'foo'], $calls[5][1][1], '->load() registers variables as Twig globals');
 
         // Twig options
         $options = $container->getDefinition('twig')->getArgument(1);
@@ -105,12 +98,10 @@ class TwigExtensionTest extends TestCase
         $this->assertEquals('ISO-8859-1', $options['charset'], '->load() sets the charset option');
         $this->assertTrue($options['debug'], '->load() sets the debug option');
         $this->assertTrue($options['strict_variables'], '->load() sets the strict_variables option');
-        $this->assertEquals($buildDir !== null ? new Reference('twig.template_cache.chain') : '%kernel.cache_dir%/twig', $options['cache'], '->load() sets the cache option');
+        $this->assertEquals(null !== $buildDir ? new Reference('twig.template_cache.chain') : '%kernel.cache_dir%/twig', $options['cache'], '->load() sets the cache option');
     }
 
-    /**
-     * @dataProvider getFormatsAndBuildDir
-     */
+    #[DataProvider('getFormatsAndBuildDir')]
     public function testLoadNoCacheConfiguration(string $format, ?string $buildDir)
     {
         $container = $this->createContainer($buildDir);
@@ -118,16 +109,14 @@ class TwigExtensionTest extends TestCase
         $this->loadFromFile($container, 'no-cache', $format);
         $this->compileContainer($container);
 
-        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.xml file');
+        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.php file');
 
         // Twig options
         $options = $container->getDefinition('twig')->getArgument(1);
         $this->assertFalse($options['cache'], '->load() sets cache option to false');
     }
 
-    /**
-     * @dataProvider getFormatsAndBuildDir
-     */
+    #[DataProvider('getFormatsAndBuildDir')]
     public function testLoadPathCacheConfiguration(string $format, ?string $buildDir)
     {
         $container = $this->createContainer($buildDir);
@@ -135,16 +124,14 @@ class TwigExtensionTest extends TestCase
         $this->loadFromFile($container, 'path-cache', $format);
         $this->compileContainer($container);
 
-        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.xml file');
+        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.php file');
 
         // Twig options
         $options = $container->getDefinition('twig')->getArgument(1);
         $this->assertSame('random-path', $options['cache'], '->load() sets cache option to string path');
     }
 
-    /**
-     * @dataProvider getFormatsAndBuildDir
-     */
+    #[DataProvider('getFormatsAndBuildDir')]
     public function testLoadProdCacheConfiguration(string $format, ?string $buildDir)
     {
         $container = $this->createContainer($buildDir);
@@ -152,35 +139,14 @@ class TwigExtensionTest extends TestCase
         $this->loadFromFile($container, 'prod-cache', $format);
         $this->compileContainer($container);
 
-        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.xml file');
+        $this->assertEquals(Environment::class, $container->getDefinition('twig')->getClass(), '->load() loads the twig.php file');
 
         // Twig options
         $options = $container->getDefinition('twig')->getArgument(1);
-        $this->assertEquals($buildDir !== null ? new Reference('twig.template_cache.chain') : '%kernel.cache_dir%/twig', $options['cache'], '->load() sets cache option to CacheChain reference');
+        $this->assertEquals(null !== $buildDir ? new Reference('twig.template_cache.chain') : '%kernel.cache_dir%/twig', $options['cache'], '->load() sets cache option to CacheChain reference');
     }
 
-    /**
-     * @group legacy
-     *
-     * @dataProvider getFormats
-     */
-    public function testLoadCustomBaseTemplateClassConfiguration(string $format)
-    {
-        $container = $this->createContainer();
-        $container->registerExtension(new TwigExtension());
-
-        $this->expectUserDeprecationMessage('Since symfony/twig-bundle 7.1: The child node "base_template_class" at path "twig" is deprecated.');
-
-        $this->loadFromFile($container, 'templateClass', $format);
-        $this->compileContainer($container);
-
-        $options = $container->getDefinition('twig')->getArgument(1);
-        $this->assertEquals('stdClass', $options['base_template_class'], '->load() sets the base_template_class option');
-    }
-
-    /**
-     * @dataProvider getFormats
-     */
+    #[DataProvider('getFormats')]
     public function testLoadCustomTemplateEscapingGuesserConfiguration(string $format)
     {
         $container = $this->createContainer();
@@ -192,9 +158,7 @@ class TwigExtensionTest extends TestCase
         $this->assertEquals([new Reference('my_project.some_bundle.template_escaping_guesser'), 'guess'], $options['autoescape']);
     }
 
-    /**
-     * @dataProvider getFormats
-     */
+    #[DataProvider('getFormats')]
     public function testLoadDefaultTemplateEscapingGuesserConfiguration(string $format)
     {
         $container = $this->createContainer();
@@ -206,9 +170,7 @@ class TwigExtensionTest extends TestCase
         $this->assertEquals('name', $options['autoescape']);
     }
 
-    /**
-     * @dataProvider getFormats
-     */
+    #[DataProvider('getFormats')]
     public function testLoadCustomDateFormats(string $fileFormat)
     {
         $container = $this->createContainer();
@@ -255,9 +217,7 @@ class TwigExtensionTest extends TestCase
         }
     }
 
-    /**
-     * @dataProvider getFormats
-     */
+    #[DataProvider('getFormats')]
     public function testTwigLoaderPaths(string $format)
     {
         $container = $this->createContainer();
@@ -292,7 +252,6 @@ class TwigExtensionTest extends TestCase
         return [
             ['php'],
             ['yml'],
-            ['xml'],
         ];
     }
 
@@ -303,15 +262,10 @@ class TwigExtensionTest extends TestCase
             ['php', __DIR__.'/build'],
             ['yml', null],
             ['yml', __DIR__.'/build'],
-            ['xml', null],
-            ['xml', __DIR__.'/build'],
         ];
     }
 
-
-    /**
-     * @dataProvider stopwatchExtensionAvailabilityProvider
-     */
+    #[DataProvider('stopwatchExtensionAvailabilityProvider')]
     public function testStopwatchExtensionAvailability(bool $debug, bool $stopwatchEnabled, bool $expected)
     {
         $container = $this->createContainer();
@@ -351,22 +305,32 @@ class TwigExtensionTest extends TestCase
         $container->register('http_kernel', 'FooClass');
         $container->register('foo', '%foo%')->addTag('twig.runtime');
         $container->register('error_renderer.html', HtmlErrorRenderer::class);
+        $container->register('foo_safe')->setClass(\stdClass::class)->addResourceTag('twig.safe_class', ['strategy' => 'html']);
+        $container->register('bar_safe')->setClass(\stdClass::class)->addResourceTag('twig.safe_class', ['strategy' => ['html', 'js']]);
+        $container->addCompilerPass(new SafeClassPass(), PassConfig::TYPE_BEFORE_REMOVING);
         $container->addCompilerPass(new RuntimeLoaderPass(), PassConfig::TYPE_BEFORE_REMOVING);
         $container->getCompilerPassConfig()->setRemovingPasses([]);
         $container->getCompilerPassConfig()->setAfterRemovingPasses([]);
         $container->compile();
 
+        $this->assertTrue($container->hasDefinition('twig.runtime.escaper'));
+        $this->assertSame('UTF-8', $container->getDefinition('twig.runtime.escaper')->getArgument(0));
+
+        $calls = $container->getDefinition('twig.runtime.escaper')->getMethodCalls();
+        $this->assertContains(['addSafeClass', [\stdClass::class, ['html']]], $calls);
+        $this->assertContains(['addSafeClass', [\stdClass::class, ['html', 'js']]], $calls);
+
         $loader = $container->getDefinition('twig.runtime_loader');
         $args = $container->getDefinition((string) $loader->getArgument(0))->getArgument(0);
+        $this->assertArrayHasKey(EscaperRuntime::class, $args);
         $this->assertArrayHasKey(FormRenderer::class, $args);
         $this->assertArrayHasKey('FooClass', $args);
+        $this->assertEquals('twig.runtime.escaper', $args[EscaperRuntime::class]->getValues()[0]);
         $this->assertEquals('twig.form.renderer', $args[FormRenderer::class]->getValues()[0]);
         $this->assertEquals('foo', $args['FooClass']->getValues()[0]);
     }
 
-    /**
-     * @dataProvider getFormats
-     */
+    #[DataProvider('getFormats')]
     public function testCustomHtmlToTextConverterService(string $format)
     {
         if (!class_exists(Mailer::class)) {
@@ -419,7 +383,6 @@ class TwigExtensionTest extends TestCase
 
         $loader = match ($format) {
             'php' => new PhpFileLoader($container, $locator),
-            'xml' => new XmlFileLoader($container, $locator),
             'yml' => new YamlFileLoader($container, $locator),
         };
 

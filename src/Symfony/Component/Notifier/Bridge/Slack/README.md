@@ -52,8 +52,16 @@ $contributeToSymfonyBlocks = (new SlackActionsBlock())
     ->button(
         'Report bugs',
         'https://symfony.com/doc/current/contributing/code/bugs.html',
-        'danger'
-    );
+        'danger',
+        'reportBugs'
+        [
+            'title' => ['type' => 'plain_text', 'text' => 'Report a bug'],
+            'text' => ['type' => 'plain_text', 'text' => 'By proceeding I confirm I\'ve read the guidelines.'],
+            'confirm' => ['type' => 'plain_text', 'text' => 'Proceed'],
+            'deny' => ['type' => 'plain_text', 'text' => 'Go back to reading']
+        ]
+    )
+    ->id('contribute_block);
 
 $slackOptions = (new SlackOptions())
     ->block((new SlackSectionBlock())
@@ -311,6 +319,13 @@ $chatMessage->options($options);
 $chatter->send($chatMessage);
 ```
 
+Sponsor
+-------
+
+This package is looking for a [backer][1].
+
+Help Symfony by [sponsoring][3] its development!
+
 Resources
 ---------
 
@@ -318,3 +333,6 @@ Resources
  * [Report issues](https://github.com/symfony/symfony/issues) and
    [send Pull Requests](https://github.com/symfony/symfony/pulls)
    in the [main Symfony repository](https://github.com/symfony/symfony)
+
+[1]: https://symfony.com/backers
+[3]: https://symfony.com/sponsor

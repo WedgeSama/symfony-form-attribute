@@ -17,11 +17,14 @@ use Symfony\Component\JsonStreamer\Mapping\PropertyMetadata;
 use Symfony\Component\JsonStreamer\Mapping\PropertyMetadataLoader;
 use Symfony\Component\JsonStreamer\Mapping\Write\AttributePropertyMetadataLoader;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNameAttributes;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithValueObjectTransformerAttributes;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithValueTransformerAttributes;
-use Symfony\Component\JsonStreamer\Tests\Fixtures\ValueTransformer\BooleanToStringValueTransformer;
-use Symfony\Component\JsonStreamer\Tests\Fixtures\ValueTransformer\DoubleIntAndCastToStringValueTransformer;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Transformer\BooleanToStringValueTransformer;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Transformer\DoubleIntAndCastToStringValueTransformer;
 use Symfony\Component\JsonStreamer\Tests\ServiceContainer;
-use Symfony\Component\JsonStreamer\ValueTransformer\ValueTransformerInterface;
+use Symfony\Component\JsonStreamer\Transformer\DateTimeValueObjectTransformer;
+use Symfony\Component\JsonStreamer\Transformer\PropertyValueTransformerInterface;
+use Symfony\Component\JsonStreamer\Transformer\ValueObjectTransformerInterface;
 use Symfony\Component\TypeInfo\Type;
 use Symfony\Component\TypeInfo\TypeResolver\TypeResolver;
 
@@ -41,12 +44,21 @@ class AttributePropertyMetadataLoaderTest extends TestCase
             BooleanToStringValueTransformer::class => new BooleanToStringValueTransformer(),
         ]), TypeResolver::create());
 
-        $this->assertEquals([
-            'id' => new PropertyMetadata('id', Type::string(), [DoubleIntAndCastToStringValueTransformer::class]),
-            'active' => new PropertyMetadata('active', Type::string(), [BooleanToStringValueTransformer::class]),
-            'name' => new PropertyMetadata('name', Type::string(), [\Closure::fromCallable('strtolower')]),
-            'range' => new PropertyMetadata('range', Type::string(), [\Closure::fromCallable(DummyWithValueTransformerAttributes::concatRange(...))]),
-        ], $loader->load(DummyWithValueTransformerAttributes::class));
+        $metadata = $loader->load(DummyWithValueTransformerAttributes::class);
+
+        $this->assertSame(['id', 'active', 'name', 'range'], array_keys($metadata));
+        $this->assertEquals(new PropertyMetadata('id', Type::string(), [DoubleIntAndCastToStringValueTransformer::class]), $metadata['id']);
+        $this->assertEquals(new PropertyMetadata('active', Type::string(), [BooleanToStringValueTransformer::class]), $metadata['active']);
+
+        $this->assertSame('name', $metadata['name']->getName());
+        $this->assertEquals(Type::string(), $metadata['name']->getType());
+        $this->assertCount(1, $metadata['name']->getValueTransformers());
+        $this->assertSame('foo', $metadata['name']->getValueTransformers()[0]('FOO'));
+
+        $this->assertSame('range', $metadata['range']->getName());
+        $this->assertEquals(Type::string(), $metadata['range']->getType());
+        $this->assertCount(1, $metadata['range']->getValueTransformers());
+        $this->assertSame('10..20', $metadata['range']->getValueTransformers()[0]([10, 20]));
     }
 
     public function testThrowWhenCannotRetrieveValueTransformer()
@@ -54,9 +66,21 @@ class AttributePropertyMetadataLoaderTest extends TestCase
         $loader = new AttributePropertyMetadataLoader(new PropertyMetadataLoader(TypeResolver::create()), new ServiceContainer(), TypeResolver::create());
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(\sprintf('You have requested a non-existent value transformer service "%s". Did you implement "%s"?', DoubleIntAndCastToStringValueTransformer::class, ValueTransformerInterface::class));
+        $this->expectExceptionMessage(\sprintf('You have requested a non-existent property value transformer service "%s". Did you implement "%s"?', DoubleIntAndCastToStringValueTransformer::class, PropertyValueTransformerInterface::class));
 
         $loader->load(DummyWithValueTransformerAttributes::class);
+    }
+
+    public function testThrowWhenValueObjectTransformer()
+    {
+        $loader = new AttributePropertyMetadataLoader(new PropertyMetadataLoader(TypeResolver::create()), new ServiceContainer([
+            DateTimeValueObjectTransformer::class => new DateTimeValueObjectTransformer(),
+        ]), TypeResolver::create());
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(\sprintf('"%s" is a "%s" and must not be specified as a property value transformer.', DateTimeValueObjectTransformer::class, ValueObjectTransformerInterface::class));
+
+        $loader->load(DummyWithValueObjectTransformerAttributes::class);
     }
 
     public function testThrowWhenInvalidValueTransformer()
@@ -67,7 +91,7 @@ class AttributePropertyMetadataLoaderTest extends TestCase
         ]), TypeResolver::create());
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage(\sprintf('The "%s" value transformer service does not implement "%s".', DoubleIntAndCastToStringValueTransformer::class, ValueTransformerInterface::class));
+        $this->expectExceptionMessage(\sprintf('The "%s" property value transformer service does not implement "%s".', DoubleIntAndCastToStringValueTransformer::class, PropertyValueTransformerInterface::class));
 
         $loader->load(DummyWithValueTransformerAttributes::class);
     }

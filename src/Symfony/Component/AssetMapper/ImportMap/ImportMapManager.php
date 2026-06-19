@@ -68,8 +68,8 @@ class ImportMapManager
      */
     public static function parsePackageName(string $packageName): ?array
     {
-        // https://regex101.com/r/z1nj7P/1
-        $regex = '/((?P<package>@?[^=@\n]+))(?:@(?P<version>[^=\s\n]+))?(?:=(?P<alias>[^\s\n]+))?/';
+        // https://regex101.com/r/3SkfPg/1
+        $regex = '/((?P<package>@?[^=@\n]+))(?:@(?P<version>[^=\n]+))?(?:=(?P<alias>[^\s\n]+))?/';
 
         if (!preg_match($regex, $packageName, $matches)) {
             return null;
@@ -112,6 +112,8 @@ class ImportMapManager
                     $entry->packageModuleSpecifier,
                     null,
                     $importName,
+                    null,
+                    $entry->isEntrypoint,
                 );
 
                 // remove it: then it will be re-added
@@ -162,7 +164,7 @@ class ImportMapManager
 
             $newEntry = ImportMapEntry::createLocal(
                 $requireOptions->importName,
-                self::getImportMapTypeFromFilename($requireOptions->path),
+                ImportMapType::tryFrom(pathinfo($path, \PATHINFO_EXTENSION)) ?? ImportMapType::JS,
                 $path,
                 $requireOptions->entrypoint,
             );
@@ -198,11 +200,6 @@ class ImportMapManager
         if ($asset && is_file($asset->sourcePath)) {
             @unlink($asset->sourcePath);
         }
-    }
-
-    private static function getImportMapTypeFromFilename(string $path): ImportMapType
-    {
-        return str_ends_with($path, '.css') ? ImportMapType::CSS : ImportMapType::JS;
     }
 
     /**

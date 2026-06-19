@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Mailer\Bridge\Azure\Tests\Transport;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\JsonMockResponse;
@@ -20,13 +21,12 @@ use Symfony\Component\Mailer\Header\MetadataHeader;
 use Symfony\Component\Mailer\Header\TagHeader;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
 class AzureApiTransportTest extends TestCase
 {
-    /**
-     * @dataProvider getTransportData
-     */
+    #[DataProvider('getTransportData')]
     public function testToString(AzureApiTransport $transport, string $expected)
     {
         $this->assertSame($expected, (string) $transport);
@@ -100,6 +100,34 @@ class AzureApiTransportTest extends TestCase
         $message = $transport->send($mail);
 
         $this->assertSame('foobar', $message->getMessageId());
+    }
+
+    public function testInlineAttachment()
+    {
+        $inlinePart = (new DataPart('image-content', 'image.png', 'image/png'))->asInline();
+        $expectedCid = $inlinePart->getContentId();
+
+        $client = new MockHttpClient(function (string $method, string $url, array $options) use ($expectedCid): ResponseInterface {
+            $body = json_decode($options['body'], true);
+
+            $this->assertCount(1, $body['attachments']);
+            $this->assertSame('image.png', $body['attachments'][0]['name']);
+            $this->assertSame($expectedCid, $body['attachments'][0]['contentId']);
+            $this->assertArrayNotHasKey('content_id', $body['attachments'][0]);
+
+            return new JsonMockResponse(['id' => 'foobar'], ['http_code' => 202]);
+        });
+
+        $transport = new AzureApiTransport('KEY', 'my-acs-resource', false, '2023-03-31', $client);
+
+        $mail = new Email();
+        $mail->subject('Hello!')
+            ->to(new Address('saif.gmati@symfony.com', 'Saif Eddin'))
+            ->from(new Address('fabpot@symfony.com', 'Fabien'))
+            ->html(\sprintf('<img src="cid:%s">', $expectedCid))
+            ->addPart($inlinePart);
+
+        $transport->send($mail);
     }
 
     public function testTagAndMetadataHeaders()

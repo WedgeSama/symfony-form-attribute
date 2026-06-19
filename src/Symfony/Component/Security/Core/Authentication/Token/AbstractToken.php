@@ -11,17 +11,22 @@
 
 namespace Symfony\Component\Security\Core\Authentication\Token;
 
-use Symfony\Component\Security\Core\User\EquatableInterface;
 use Symfony\Component\Security\Core\User\InMemoryUser;
 use Symfony\Component\Security\Core\User\UserInterface;
 
 /**
  * Base class for Token instances.
  *
+ * Note that the token's role names are decoupled from the user's roles on purpose: token roles describe
+ * the authentication context, not the user's permanent role assignment. This is why `setUser()` only
+ * updates the user reference and leaves the role names untouched. `ContextListener` is the component
+ * responsible for comparing the stored role names against `$user->getRoles()` and deauthenticating
+ * when they diverge.
+ *
  * @author Fabien Potencier <fabien@symfony.com>
  * @author Johannes M. Schmitt <schmittjoh@gmail.com>
  */
-abstract class AbstractToken implements TokenInterface, \Serializable
+abstract class AbstractToken implements TokenInterface
 {
     private ?UserInterface $user = null;
     private array $roleNames;
@@ -32,16 +37,12 @@ abstract class AbstractToken implements TokenInterface, \Serializable
      */
     public function __construct(array $roles = [])
     {
-        $this->roleNames = [];
-
-        foreach ($roles as $role) {
-            $this->roleNames[] = (string) $role;
-        }
+        $this->roleNames = $roles;
     }
 
     public function getRoleNames(): array
     {
-        return $this->roleNames ??= self::__construct($this->user->getRoles()) ?? $this->roleNames;
+        return $this->roleNames ??= $this->user?->getRoles() ?? [];
     }
 
     public function getUserIdentifier(): string
@@ -57,20 +58,6 @@ abstract class AbstractToken implements TokenInterface, \Serializable
     public function setUser(UserInterface $user): void
     {
         $this->user = $user;
-    }
-
-    /**
-     * Removes sensitive information from the token.
-     *
-     * @deprecated since Symfony 7.3, erase credentials using the "__serialize()" method instead
-     */
-    public function eraseCredentials(): void
-    {
-        trigger_deprecation('symfony/security-core', '7.3', \sprintf('The "%s::eraseCredentials()" method is deprecated and will be removed in 8.0, erase credentials using the "__serialize()" method instead.', TokenInterface::class));
-
-        if ($this->getUser() instanceof UserInterface) {
-            $this->getUser()->eraseCredentials();
-        }
     }
 
     /**
@@ -90,13 +77,7 @@ abstract class AbstractToken implements TokenInterface, \Serializable
      */
     public function __serialize(): array
     {
-        $data = [$this->user, true, null, $this->attributes];
-
-        if (!$this->user instanceof EquatableInterface) {
-            $data[] = $this->roleNames;
-        }
-
-        return $data;
+        return [$this->user, true, null, $this->attributes, $this->getRoleNames()];
     }
 
     /**
@@ -160,27 +141,6 @@ abstract class AbstractToken implements TokenInterface, \Serializable
         $class = static::class;
         $class = substr($class, strrpos($class, '\\') + 1);
 
-        $roles = [];
-        foreach ($this->roleNames as $role) {
-            $roles[] = $role;
-        }
-
-        return \sprintf('%s(user="%s", roles="%s")', $class, $this->getUserIdentifier(), implode(', ', $roles));
-    }
-
-    /**
-     * @internal
-     */
-    final public function serialize(): string
-    {
-        throw new \BadMethodCallException('Cannot serialize '.__CLASS__);
-    }
-
-    /**
-     * @internal
-     */
-    final public function unserialize(string $serialized): void
-    {
-        $this->__unserialize(unserialize($serialized));
+        return \sprintf('%s(user="%s", roles="%s")', $class, $this->getUserIdentifier(), implode(', ', $this->getRoleNames()));
     }
 }

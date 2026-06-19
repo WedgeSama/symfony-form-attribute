@@ -18,6 +18,7 @@ use Symfony\Component\BrowserKit\History;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\Session\SessionInterface;
 use Symfony\Component\HttpKernel\HttpKernelBrowser;
 use Symfony\Component\HttpKernel\KernelInterface;
 use Symfony\Component\HttpKernel\Profiler\Profile as HttpProfile;
@@ -61,6 +62,35 @@ class KernelBrowser extends HttpKernelBrowser
         }
 
         return $this->getContainer()->get('profiler')->loadProfileFromResponse($this->response);
+    }
+
+    public function getSession(): ?SessionInterface
+    {
+        $container = $this->getContainer();
+
+        if (!$container->has('session.factory')) {
+            return null;
+        }
+
+        $session = $container->get('session.factory')->createSession();
+
+        $cookieJar = $this->getCookieJar();
+        $cookie = $cookieJar->get($session->getName());
+
+        if ($cookie instanceof Cookie) {
+            $session->setId($cookie->getValue());
+        }
+
+        $session->start();
+
+        if (!$cookie instanceof Cookie) {
+            $domains = array_unique(array_map(static fn (Cookie $cookie) => $cookie->getName() === $session->getName() ? $cookie->getDomain() : '', $cookieJar->all())) ?: [''];
+            foreach ($domains as $domain) {
+                $cookieJar->set(new Cookie($session->getName(), $session->getId(), domain: $domain));
+            }
+        }
+
+        return $session;
     }
 
     /**
@@ -116,19 +146,20 @@ class KernelBrowser extends HttpKernelBrowser
         $container = $this->getContainer();
         $container->get('security.untracked_token_storage')->setToken($token);
 
-        if (!$container->has('session.factory')) {
+        if (!$session = $this->getSession()) {
             return $this;
         }
 
-        $session = $container->get('session.factory')->createSession();
-        $session->set('_security_'.$firewallContext, serialize($token));
-        $session->save();
+        try {
+            $session->set('_security_'.$firewallContext, serialize($token));
+        } catch (\Throwable $e) {
+            $hint = method_exists($user, '__serialize')
+                ? 'Review the "__serialize()" implementation to exclude any fields that cannot or should not be persisted there'
+                : 'Implement "__serialize()"/"__unserialize()" to control what is serialized into the session, and exclude any fields that should not be persisted there';
 
-        $domains = array_unique(array_map(fn (Cookie $cookie) => $cookie->getName() === $session->getName() ? $cookie->getDomain() : '', $this->getCookieJar()->all())) ?: [''];
-        foreach ($domains as $domain) {
-            $cookie = new Cookie($session->getName(), $session->getId(), null, null, $domain);
-            $this->getCookieJar()->set($cookie);
+            throw new \LogicException(\sprintf('Cannot store the security token in the session: the user object of class "%s" (or one of its referenced objects) is not serializable. %s (e.g. Doctrine relations). See https://symfony.com/doc/current/security.html#understanding-how-users-are-refreshed-from-the-session for details.', $user::class, $hint), 0, $e);
         }
+        $session->save();
 
         return $this;
     }
@@ -205,25 +236,25 @@ class KernelBrowser extends HttpKernelBrowser
         $profilerCode = '';
         if ($this->profiler) {
             $profilerCode = <<<'EOF'
-$container = $kernel->getContainer();
-$container = $container->has('test.service_container') ? $container->get('test.service_container') : $container;
-$container->get('profiler')->enable();
-EOF;
+                $container = $kernel->getContainer();
+                $container = $container->has('test.service_container') ? $container->get('test.service_container') : $container;
+                $container->get('profiler')->enable();
+                EOF;
         }
 
         $code = <<<EOF
-<?php
+            <?php
 
-error_reporting($errorReporting);
+            error_reporting($errorReporting);
 
-$requires
+            $requires
 
-\$kernel = unserialize($kernel);
-\$kernel->boot();
-$profilerCode
+            \$kernel = unserialize($kernel);
+            \$kernel->boot();
+            $profilerCode
 
-\$request = unserialize($request);
-EOF;
+            \$request = unserialize($request);
+            EOF;
 
         return $code.$this->getHandleScript();
     }

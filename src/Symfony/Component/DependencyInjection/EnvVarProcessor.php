@@ -64,6 +64,9 @@ class EnvVarProcessor implements EnvVarProcessorInterface, ResetInterface
         ];
     }
 
+    /**
+     * @param-immediately-invoked-callable $getEnv
+     */
     public function getEnv(string $prefix, string $name, \Closure $getEnv): mixed
     {
         $i = strpos($name, ':');
@@ -335,7 +338,7 @@ class EnvVarProcessor implements EnvVarProcessorInterface, ResetInterface
         }
 
         if ('query_string' === $prefix) {
-            $queryString = parse_url($env, \PHP_URL_QUERY) ?: $env;
+            $queryString = parse_url($env, \PHP_URL_QUERY) ?: (parse_url($env, \PHP_URL_SCHEME) ? '' : $env);
             parse_str($queryString, $result);
 
             return $result;

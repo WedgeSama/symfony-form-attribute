@@ -1020,6 +1020,30 @@ class CheckTypeDeclarationsPassTest extends TestCase
 
         $this->addToAssertionCount(1);
     }
+
+    public function testCheckTypeDeclarationsSkipsSubsequentNamedArguments()
+    {
+        $container = new ContainerBuilder();
+        $container->register('service', ServiceWithTwoInts::class)
+            ->setArguments(['a' => 1, 'b' => []]);
+
+        $this->expectException(InvalidParameterTypeException::class);
+        $this->expectExceptionMessage('argument 2 of "Symfony\Component\DependencyInjection\Tests\Compiler\ServiceWithTwoInts::__construct()" accepts "int", "array" passed');
+
+        (new CheckTypeDeclarationsPass(true))->process($container);
+    }
+
+    public function testStringableCanBePassedToStringTypeParameter()
+    {
+        $container = new ContainerBuilder();
+        $container->register('stringable', StringableClass::class);
+        $container->register('consumer', StringConsumer::class)
+            ->setArguments([new Reference('stringable')]);
+
+        (new CheckTypeDeclarationsPass(true))->process($container);
+
+        $this->addToAssertionCount(1);
+    }
 }
 
 class CallableClass
@@ -1032,6 +1056,28 @@ class CallableClass
 class StaticCallableClass
 {
     public static function __callStatic($name, $arguments)
+    {
+    }
+}
+
+class ServiceWithTwoInts
+{
+    public function __construct(int $a, int $b)
+    {
+    }
+}
+
+class StringableClass implements \Stringable
+{
+    public function __toString(): string
+    {
+        return 'stringable';
+    }
+}
+
+class StringConsumer
+{
+    public function __construct(string $value)
     {
     }
 }

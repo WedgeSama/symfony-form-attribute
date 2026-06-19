@@ -11,23 +11,45 @@
 
 namespace Symfony\Component\JsonStreamer\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\JsonStreamer\Exception\NotEncodableValueException;
 use Symfony\Component\JsonStreamer\JsonStreamWriter;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Enum\DummyBackedEnum;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Mapping\SyntheticPropertyMetadataLoader;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\ClassicDummy;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithArray;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithDateIntervals;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithDateTimes;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithDateTimeZones;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithDollarNamedProperties;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithGenerics;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithList;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNameAttributes;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNestedArray;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNestedDictDummies;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNestedList;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNestedListDummies;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNullableProperties;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithPhpDoc;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithSelfReferencingDummy;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithSyntheticProperties;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithUnionProperties;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithValueObjects;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithValueTransformerAttributes;
 use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\SelfReferencingDummy;
-use Symfony\Component\JsonStreamer\Tests\Fixtures\ValueTransformer\BooleanToStringValueTransformer;
-use Symfony\Component\JsonStreamer\Tests\Fixtures\ValueTransformer\DoubleIntAndCastToStringValueTransformer;
-use Symfony\Component\JsonStreamer\ValueTransformer\DateTimeToStringValueTransformer;
-use Symfony\Component\JsonStreamer\ValueTransformer\ValueTransformerInterface;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\SelfReferencingDummyDict;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\SelfReferencingDummyList;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Model\SelfReferencingDummyWithOtherDummy;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Transformer\BooleanToStringValueTransformer;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Transformer\DoubleIntAndCastToStringValueTransformer;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\Transformer\HeightValueObjectTransformer;
+use Symfony\Component\JsonStreamer\Tests\Fixtures\ValueObject\Height;
+use Symfony\Component\JsonStreamer\Transformer\DateIntervalValueObjectTransformer;
+use Symfony\Component\JsonStreamer\Transformer\DateTimeValueObjectTransformer;
+use Symfony\Component\JsonStreamer\Transformer\PropertyValueTransformerInterface;
+use Symfony\Component\JsonStreamer\Transformer\ValueObjectTransformerInterface;
 use Symfony\Component\TypeInfo\Type;
 
 class JsonStreamWriterTest extends TestCase
@@ -79,7 +101,7 @@ class JsonStreamWriterTest extends TestCase
         $this->assertWritten('{"value":"foo"}', $dummy, Type::object(DummyWithUnionProperties::class));
 
         $dummy->value = null;
-        $this->assertWritten('{"value":null}', $dummy, Type::object(DummyWithUnionProperties::class));
+        $this->assertWritten('{}', $dummy, Type::object(DummyWithUnionProperties::class));
     }
 
     public function testWriteCollection()
@@ -103,9 +125,68 @@ class JsonStreamWriterTest extends TestCase
         );
 
         $this->assertWritten(
-            '{"0":{"id":1,"name":"dummy"},"1":{"id":1,"name":"dummy"}}',
+            '[{"id":1,"name":"dummy"},{"id":1,"name":"dummy"}]',
             new \ArrayObject([new ClassicDummy(), new ClassicDummy()]),
             Type::iterable(Type::object(ClassicDummy::class), Type::int()),
+        );
+    }
+
+    public function testWriteNestedCollection()
+    {
+        $dummyWithArray1 = new DummyWithArray();
+        $dummyWithArray1->dummies = [new ClassicDummy()];
+        $dummyWithArray1->customProperty = 'customProperty1';
+
+        $dummyWithArray2 = new DummyWithArray();
+        $dummyWithArray2->dummies = [new ClassicDummy()];
+        $dummyWithArray2->customProperty = 'customProperty2';
+
+        $this->assertWritten(
+            '[{"dummies":{"0":{"id":1,"name":"dummy"}},"customProperty":"customProperty1"},{"dummies":{"0":{"id":1,"name":"dummy"}},"customProperty":"customProperty2"}]',
+            [$dummyWithArray1, $dummyWithArray2],
+            Type::list(Type::object(DummyWithArray::class)),
+        );
+
+        $dummyWithNestedArray1 = new DummyWithNestedArray();
+        $dummyWithNestedArray1->dummies = [$dummyWithArray1];
+        $dummyWithNestedArray1->stringProperty = 'stringProperty1';
+
+        $dummyWithNestedArray2 = new DummyWithNestedArray();
+        $dummyWithNestedArray2->dummies = [$dummyWithArray2];
+        $dummyWithNestedArray2->stringProperty = 'stringProperty2';
+
+        $this->assertWritten(
+            '[{"dummies":{"0":{"dummies":{"0":{"id":1,"name":"dummy"}},"customProperty":"customProperty1"}},"stringProperty":"stringProperty1"},{"dummies":{"0":{"dummies":{"0":{"id":1,"name":"dummy"}},"customProperty":"customProperty2"}},"stringProperty":"stringProperty2"}]',
+            [$dummyWithNestedArray1, $dummyWithNestedArray2],
+            Type::list(Type::object(DummyWithNestedArray::class)),
+        );
+
+        $dummyWithList1 = new DummyWithList();
+        $dummyWithList1->dummies = [new ClassicDummy()];
+        $dummyWithList1->customProperty = 'customProperty1';
+
+        $dummyWithList2 = new DummyWithList();
+        $dummyWithList2->dummies = [new ClassicDummy()];
+        $dummyWithList2->customProperty = 'customProperty2';
+
+        $this->assertWritten(
+            '[{"dummies":[{"id":1,"name":"dummy"}],"customProperty":"customProperty1"},{"dummies":[{"id":1,"name":"dummy"}],"customProperty":"customProperty2"}]',
+            [$dummyWithList1, $dummyWithList2],
+            Type::list(Type::object(DummyWithList::class)),
+        );
+
+        $dummyWithNestedList1 = new DummyWithNestedList();
+        $dummyWithNestedList1->dummies = [$dummyWithList1];
+        $dummyWithNestedList1->stringProperty = 'stringProperty1';
+
+        $dummyWithNestedList2 = new DummyWithNestedList();
+        $dummyWithNestedList2->dummies = [$dummyWithList2];
+        $dummyWithNestedList2->stringProperty = 'stringProperty2';
+
+        $this->assertWritten(
+            '[{"dummies":[{"dummies":[{"id":1,"name":"dummy"}],"customProperty":"customProperty1"}],"stringProperty":"stringProperty1"},{"dummies":[{"dummies":[{"id":1,"name":"dummy"}],"customProperty":"customProperty2"}],"stringProperty":"stringProperty2"}]',
+            [$dummyWithNestedList1, $dummyWithNestedList2],
+            Type::list(Type::object(DummyWithNestedList::class)),
         );
     }
 
@@ -150,9 +231,74 @@ class JsonStreamWriterTest extends TestCase
             $dummy,
             Type::object(DummyWithValueTransformerAttributes::class),
             options: ['scale' => 1],
-            valueTransformers: [
+            transformers: [
                 BooleanToStringValueTransformer::class => new BooleanToStringValueTransformer(),
                 DoubleIntAndCastToStringValueTransformer::class => new DoubleIntAndCastToStringValueTransformer(),
+            ],
+        );
+    }
+
+    public function testValueTransformerHasAccessToCurrentObject()
+    {
+        $dummy = new DummyWithValueTransformerAttributes();
+        $dummy->id = 10;
+        $dummy->active = true;
+
+        $this->assertWritten(
+            '{"id":"20","active":"true","name":"dummy","range":"10..20"}',
+            $dummy,
+            Type::object(DummyWithValueTransformerAttributes::class),
+            options: ['scale' => 1],
+            transformers: [
+                BooleanToStringValueTransformer::class => new class($this) implements PropertyValueTransformerInterface {
+                    public function __construct(
+                        private JsonStreamWriterTest $test,
+                    ) {
+                    }
+
+                    public function transform(mixed $value, array $options = []): mixed
+                    {
+                        $this->test->assertArrayHasKey('_current_object', $options);
+                        $this->test->assertInstanceof(DummyWithValueTransformerAttributes::class, $options['_current_object']);
+
+                        return (new BooleanToStringValueTransformer())->transform($value, $options);
+                    }
+
+                    public static function getStreamValueType(): Type
+                    {
+                        return BooleanToStringValueTransformer::getStreamValueType();
+                    }
+                },
+                DoubleIntAndCastToStringValueTransformer::class => new DoubleIntAndCastToStringValueTransformer(),
+            ],
+        );
+    }
+
+    public function testWriteObjectWithValueObject()
+    {
+        $dummy = new DummyWithValueObjects();
+        $dummy->height = new Height(10, 'm');
+        $dummy->nullableHeight = new Height(10, 'dm');
+        $dummy->unionHeight = new Height(10, 'cm');
+
+        $this->assertWritten(
+            '{"height":"10 m","nullableHeight":"10 dm","unionHeight":"10 cm"}',
+            $dummy,
+            Type::object(DummyWithValueObjects::class),
+            transformers: [
+                Height::class => new HeightValueObjectTransformer(),
+            ],
+        );
+
+        $dummy->nullableHeight = null;
+        $dummy->unionHeight = 10;
+
+        $this->assertWritten(
+            '{"height":"10 m","unionHeight":10}',
+            $dummy,
+            Type::object(DummyWithValueObjects::class),
+            transformers: [
+                Height::class => new HeightValueObjectTransformer(),
             ],
         );
     }
@@ -169,7 +315,18 @@ class JsonStreamWriterTest extends TestCase
     {
         $dummy = new DummyWithNullableProperties();
 
-        $this->assertWritten('{"name":null,"enum":null}', $dummy, Type::object(DummyWithNullableProperties::class));
+        $this->assertWritten('{}', $dummy, Type::object(DummyWithNullableProperties::class));
+
+        $dummy->name = 'name';
+
+        $this->assertWritten('{"name":"name"}', $dummy, Type::object(DummyWithNullableProperties::class));
+        $this->assertWritten('{"name":"name","enum":null}', $dummy, Type::object(DummyWithNullableProperties::class), options: ['include_null_properties' => true]);
+
+        $dummy->name = null;
+        $dummy->enum = DummyBackedEnum::ONE;
+
+        $this->assertWritten('{"enum":1}', $dummy, Type::object(DummyWithNullableProperties::class));
+        $this->assertWritten('{"name":null,"enum":1}', $dummy, Type::object(DummyWithNullableProperties::class), options: ['include_null_properties' => true]);
     }
 
     public function testWriteObjectWithDateTimes()
@@ -177,18 +334,129 @@ class JsonStreamWriterTest extends TestCase
         $dummy = new DummyWithDateTimes();
         $dummy->interface = new \DateTimeImmutable('2024-11-20');
         $dummy->immutable = new \DateTimeImmutable('2025-11-20');
+        $dummy->union = new \DateTimeImmutable('2026-11-20');
 
         $this->assertWritten(
-            '{"interface":"2024-11-20","immutable":"2025-11-20"}',
+            '{"interface":"2024-11-20","immutable":"2025-11-20","union":"2026-11-20"}',
             $dummy,
             Type::object(DummyWithDateTimes::class),
-            options: [DateTimeToStringValueTransformer::FORMAT_KEY => 'Y-m-d'],
+            options: [DateTimeValueObjectTransformer::FORMAT_KEY => 'Y-m-d'],
+        );
+
+        $dummy->union = 10;
+
+        $this->assertWritten(
+            '{"interface":"2024-11-20","immutable":"2025-11-20","union":10}',
+            $dummy,
+            Type::object(DummyWithDateTimes::class),
+            options: [DateTimeValueObjectTransformer::FORMAT_KEY => 'Y-m-d'],
         );
     }
 
-    /**
-     * @dataProvider throwWhenMaxDepthIsReachedDataProvider
-     */
+    public function testWriteObjectWithDateIntervals()
+    {
+        $dummy = new DummyWithDateIntervals();
+        $dummy->interval = new \DateInterval('P2Y6M1DT12H30M5S');
+
+        $this->assertWritten(
+            '{"interval":"P2Y6M1DT12H30M5S"}',
+            $dummy,
+            Type::object(DummyWithDateIntervals::class),
+            options: [DateIntervalValueObjectTransformer::FORMAT_KEY => 'P%yY%mM%dDT%hH%iM%sS'],
+        );
+    }
+
+    public function testWriteObjectWithDateTimeZones()
+    {
+        $dummy = new DummyWithDateTimeZones();
+        $dummy->timezone = new \DateTimeZone('Asia/Tokyo');
+
+        $this->assertWritten(
+            '{"timezone":"Asia\/Tokyo"}',
+            $dummy,
+            Type::object(DummyWithDateTimeZones::class),
+        );
+    }
+
+    public function testWriteObjectWithDollarNamedProperties()
+    {
+        $this->assertWritten('{"$foo":true,"{$foo->bar}":true}', new DummyWithDollarNamedProperties(), Type::object(DummyWithDollarNamedProperties::class));
+    }
+
+    public function testWriteObjectWithSyntheticProperty()
+    {
+        $writer = new JsonStreamWriter(new Container(), new SyntheticPropertyMetadataLoader(), $this->streamWritersDir);
+
+        $this->assertSame('{"synthetic":true}', (string) $writer->write(new DummyWithSyntheticProperties(), Type::object(DummyWithSyntheticProperties::class)));
+    }
+
+    public function testWriteSelfReferencingWithOtherDummy()
+    {
+        $dummy = new DummyWithSelfReferencingDummy();
+        $dummy->otherDummy = new ClassicDummy();
+        $dummy->selfReferencing = new SelfReferencingDummyWithOtherDummy();
+        $dummy->selfReferencing->otherDummy = new ClassicDummy();
+        $dummy->selfReferencing->self = new SelfReferencingDummyWithOtherDummy();
+        $dummy->selfReferencing->self->otherDummy = new ClassicDummy();
+
+        $this->assertWritten(
+            '{"otherDummy":{"id":1,"name":"dummy"},"selfReferencing":{"otherDummy":{"id":1,"name":"dummy"},"self":{"otherDummy":{"id":1,"name":"dummy"}}}}',
+            $dummy,
+            Type::object(DummyWithSelfReferencingDummy::class),
+        );
+    }
+
+    public function testWriteNestedSelfList()
+    {
+        $dummy = new SelfReferencingDummyList();
+        $dummy->items = [new SelfReferencingDummyList(), new SelfReferencingDummyList(), new SelfReferencingDummyList()];
+
+        $this->assertWritten(
+            '{"items":{"0":{"items":{}},"1":{"items":{}},"2":{"items":{}}}}',
+            $dummy,
+            Type::object(SelfReferencingDummyList::class)
+        );
+
+        $dummy = new DummyWithNestedListDummies();
+        $dummy->dummies = [new DummyWithNestedListDummies(), new DummyWithNestedListDummies(), new DummyWithNestedListDummies()];
+
+        $this->assertWritten(
+            '{"dummies":{"0":{"dummies":{}},"1":{"dummies":{}},"2":{"dummies":{}}}}',
+            $dummy,
+            Type::object(DummyWithNestedListDummies::class)
+        );
+    }
+
+    public function testWriteNestedSelfDict()
+    {
+        $dummy = new SelfReferencingDummyDict();
+        $dummy->items = [
+            'first' => new SelfReferencingDummyDict(),
+            'second' => new SelfReferencingDummyDict(),
+            'third' => new SelfReferencingDummyDict(),
+        ];
+
+        $this->assertWritten(
+            '{"items":{"first":{"items":{}},"second":{"items":{}},"third":{"items":{}}}}',
+            $dummy,
+            Type::object(SelfReferencingDummyDict::class)
+        );
+
+        $dummy = new DummyWithNestedDictDummies();
+        $dummy->dummies = [
+            'first' => new DummyWithNestedDictDummies(),
+            'second' => new DummyWithNestedDictDummies(),
+            'third' => new DummyWithNestedDictDummies(),
+        ];
+
+        $this->assertWritten(
+            '{"dummies":{"first":{"dummies":{}},"second":{"dummies":{}},"third":{"dummies":{}}}}',
+            $dummy,
+            Type::object(DummyWithNestedDictDummies::class)
+        );
+    }
+
+    #[DataProvider('throwWhenMaxDepthIsReachedDataProvider')]
     public function testThrowWhenMaxDepthIsReached(Type $type, mixed $data)
     {
         $writer = JsonStreamWriter::create(streamWritersDir: $this->streamWritersDir);
@@ -229,7 +497,7 @@ class JsonStreamWriterTest extends TestCase
         $writer = JsonStreamWriter::create(streamWritersDir: $this->streamWritersDir);
 
         $this->expectException(NotEncodableValueException::class);
-        $this->expectExceptionMessage('Inf and NaN cannot be JSON encoded');
+        $this->expectExceptionMessage('Cannot encode "int" to JSON: Inf and NaN cannot be JSON encoded.');
 
         (string) $writer->write(\INF, Type::int());
     }
@@ -261,12 +529,12 @@ class JsonStreamWriterTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed>                     $options
-     * @param array<string, ValueTransformerInterface> $valueTransformers
+     * @param array<string, mixed>                                                             $options
+     * @param array<string, PropertyValueTransformerInterface|ValueObjectTransformerInterface> $transformers
      */
-    private function assertWritten(string $json, mixed $data, Type $type, array $options = [], array $valueTransformers = []): void
+    private function assertWritten(string $json, mixed $data, Type $type, array $options = [], array $transformers = []): void
     {
-        $writer = JsonStreamWriter::create(streamWritersDir: $this->streamWritersDir, valueTransformers: $valueTransformers);
+        $writer = JsonStreamWriter::create($transformers, $this->streamWritersDir);
         $this->assertSame($json, (string) $writer->write($data, $type, $options));
     }
 }

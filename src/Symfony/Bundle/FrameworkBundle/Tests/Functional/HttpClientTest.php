@@ -11,6 +11,10 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Tests\Functional;
 
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+
 class HttpClientTest extends AbstractWebTestCase
 {
     public function testHttpClientAssertions()
@@ -20,14 +24,25 @@ class HttpClientTest extends AbstractWebTestCase
         $client->request('GET', '/http_client_call');
 
         $this->assertHttpClientRequest('https://symfony.com/');
-        $this->assertHttpClientRequest('https://symfony.com/', httpClientId: 'symfony.http_client');
-        $this->assertHttpClientRequest('https://symfony.com/', 'POST', 'foo', httpClientId: 'symfony.http_client');
-        $this->assertHttpClientRequest('https://symfony.com/', 'POST', ['foo' => 'bar'], httpClientId: 'symfony.http_client');
-        $this->assertHttpClientRequest('https://symfony.com/', 'POST', ['foo' => 'bar'], httpClientId: 'symfony.http_client');
+        $this->assertHttpClientRequest('https://symfony.com/', 'GET', null, [], 'symfony.http_client');
+        $this->assertHttpClientRequest('https://symfony.com/', 'POST', 'foo', [], 'symfony.http_client');
+        $this->assertHttpClientRequest('https://symfony.com/', 'POST', ['foo' => 'bar'], [], 'symfony.http_client');
+        $this->assertHttpClientRequest('https://symfony.com/', 'POST', ['foo' => 'bar'], [], 'symfony.http_client');
         $this->assertHttpClientRequest('https://symfony.com/', 'POST', ['foo' => 'bar'], ['X-Test-Header' => 'foo'], 'symfony.http_client');
-        $this->assertHttpClientRequest('https://symfony.com/doc/current/index.html', httpClientId: 'symfony.http_client');
-        $this->assertNotHttpClientRequest('https://laravel.com', httpClientId: 'symfony.http_client');
+        $this->assertHttpClientRequest('https://symfony.com/doc/current/index.html', 'GET', null, [], 'symfony.http_client');
+        $this->assertNotHttpClientRequest('https://laravel.com', 'GET', 'symfony.http_client');
 
         $this->assertHttpClientRequestCount(6, 'symfony.http_client');
+    }
+
+    public function testHttpClientCanBeOverriddenInWebTestCase()
+    {
+        $browser = $this->createClient(['test_case' => 'HttpClient', 'root_config' => 'config.yml', 'debug' => true]);
+        $mockedContent = 'Request Mocked successfully!';
+        static::getContainer()->set(HttpClientInterface::class, new MockHttpClient(new MockResponse($mockedContent)));
+
+        $browser->request('GET', '/http_client_mock');
+
+        self::assertSame($mockedContent, $browser->getResponse()->getContent());
     }
 }

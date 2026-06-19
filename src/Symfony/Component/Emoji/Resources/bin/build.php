@@ -48,7 +48,7 @@ final class Builder
             // 263A FE0F    ; fully-qualified     # ☺️ E0.6 smiling face
             preg_match('{^(?<codePoints>[\w ]+) +; [\w-]+ +# (?<emoji>.+) E\d+\.\d+ ?(?<name>.+)$}Uu', $line, $matches);
             if (!$matches) {
-                throw new \DomainException("Could not parse line: \"$line\".");
+                throw new DomainException("Could not parse line: \"$line\".");
             }
 
             $codePoints = str_replace(' ', '-', trim($matches['codePoints']));
@@ -260,3 +260,5 @@ final class Builder
         return [$emojiText, $textEmoji];
     }
 }
+
+// @php-cs-fixer-ignore psr_autoloading

@@ -1,10 +1,16 @@
 CHANGELOG
 =========
 
+8.1
+---
+
+ * Add `--sort` option to `debug:scheduler` to order recurring messages by next run date; with `--all`, rows with no next run date appear first
+
 7.3
 ---
 
  * Add `TriggerNormalizer`
+ * Throw exception when multiple schedule provider services are registered under the same scheduler name
 
 7.2
 ---

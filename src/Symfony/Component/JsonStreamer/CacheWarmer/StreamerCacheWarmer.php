@@ -11,8 +11,10 @@
 
 namespace Symfony\Component\JsonStreamer\CacheWarmer;
 
+use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Symfony\Component\Config\ConfigCacheFactoryInterface;
 use Symfony\Component\HttpKernel\CacheWarmer\CacheWarmerInterface;
 use Symfony\Component\JsonStreamer\Exception\ExceptionInterface;
 use Symfony\Component\JsonStreamer\Mapping\PropertyMetadataLoaderInterface;
@@ -42,9 +44,23 @@ final class StreamerCacheWarmer implements CacheWarmerInterface
         string $streamWritersDir,
         string $streamReadersDir,
         private LoggerInterface $logger = new NullLogger(),
+        ?ConfigCacheFactoryInterface $configCacheFactory = null,
+        ?ContainerInterface $transformers = null,
     ) {
-        $this->streamWriterGenerator = new StreamWriterGenerator($streamWriterPropertyMetadataLoader, $streamWritersDir);
-        $this->streamReaderGenerator = new StreamReaderGenerator($streamReaderPropertyMetadataLoader, $streamReadersDir);
+        $transformers ??= new class implements ContainerInterface {
+            public function has(string $id): bool
+            {
+                return false;
+            }
+
+            public function get(string $id): mixed
+            {
+                throw new \LogicException('No transformers available.');
+            }
+        };
+
+        $this->streamWriterGenerator = new StreamWriterGenerator($streamWriterPropertyMetadataLoader, $transformers, $streamWritersDir, $configCacheFactory);
+        $this->streamReaderGenerator = new StreamReaderGenerator($streamReaderPropertyMetadataLoader, $transformers, $streamReadersDir, $configCacheFactory);
     }
 
     public function warmUp(string $cacheDir, ?string $buildDir = null): array

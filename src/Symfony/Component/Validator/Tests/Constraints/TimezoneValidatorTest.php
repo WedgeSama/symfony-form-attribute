@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Symfony\Component\Validator\Constraints\Timezone;
 use Symfony\Component\Validator\Constraints\TimezoneValidator;
 use Symfony\Component\Validator\Exception\UnexpectedValueException;
@@ -29,14 +31,14 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
 
     public function testNullIsValid()
     {
-        $this->validator->validate(null, new Timezone());
+        $this->validate(null, new Timezone());
 
         $this->assertNoViolation();
     }
 
     public function testEmptyStringIsValid()
     {
-        $this->validator->validate('', new Timezone());
+        $this->validate('', new Timezone());
 
         $this->assertNoViolation();
     }
@@ -44,15 +46,13 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
     public function testExpectsStringCompatibleType()
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->validator->validate(new \stdClass(), new Timezone());
+        $this->validate(new \stdClass(), new Timezone());
     }
 
-    /**
-     * @dataProvider getValidTimezones
-     */
+    #[DataProvider('getValidTimezones')]
     public function testValidTimezones(string $timezone)
     {
-        $this->validator->validate($timezone, new Timezone());
+        $this->validate($timezone, new Timezone());
 
         $this->assertNoViolation();
     }
@@ -87,14 +87,12 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
         yield ['Pacific/Noumea'];
     }
 
-    /**
-     * @dataProvider getValidGroupedTimezones
-     */
+    #[DataProvider('getValidGroupedTimezones')]
     public function testValidGroupedTimezones(string $timezone, int $zone)
     {
         $constraint = new Timezone(zone: $zone);
 
-        $this->validator->validate($timezone, $constraint);
+        $this->validate($timezone, $constraint);
 
         $this->assertNoViolation();
     }
@@ -118,14 +116,12 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
         yield ['Atlantic/Azores', \DateTimeZone::ATLANTIC | \DateTimeZone::ASIA];
     }
 
-    /**
-     * @dataProvider getInvalidTimezones
-     */
+    #[DataProvider('getInvalidTimezones')]
     public function testInvalidTimezoneWithoutZone(string $timezone)
     {
         $constraint = new Timezone(message: 'myMessage');
 
-        $this->validator->validate($timezone, $constraint);
+        $this->validate($timezone, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', \sprintf('"%s"', $timezone))
@@ -141,9 +137,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
         yield ['foobar'];
     }
 
-    /**
-     * @dataProvider getInvalidGroupedTimezones
-     */
+    #[DataProvider('getInvalidGroupedTimezones')]
     public function testInvalidGroupedTimezones(string $timezone, int $zone)
     {
         $constraint = new Timezone(
@@ -151,7 +145,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
             message: 'myMessage',
         );
 
-        $this->validator->validate($timezone, $constraint);
+        $this->validate($timezone, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', \sprintf('"%s"', $timezone))
@@ -176,7 +170,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
     {
         $constraint = new Timezone(zone: \DateTimeZone::AMERICA, message: 'myMessage');
 
-        $this->validator->validate('Europe/Berlin', $constraint);
+        $this->validate('Europe/Berlin', $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', '"Europe/Berlin"')
@@ -184,9 +178,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider getValidGroupedTimezonesByCountry
-     */
+    #[DataProvider('getValidGroupedTimezonesByCountry')]
     public function testValidGroupedTimezonesByCountry(string $timezone, string $country)
     {
         $constraint = new Timezone(
@@ -194,7 +186,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
             countryCode: $country,
         );
 
-        $this->validator->validate($timezone, $constraint);
+        $this->validate($timezone, $constraint);
 
         $this->assertNoViolation();
     }
@@ -221,9 +213,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
         yield ['Pacific/Kiritimati', 'KI'];
     }
 
-    /**
-     * @dataProvider getInvalidGroupedTimezonesByCountry
-     */
+    #[DataProvider('getInvalidGroupedTimezonesByCountry')]
     public function testInvalidGroupedTimezonesByCountry(string $timezone, string $countryCode)
     {
         $constraint = new Timezone(
@@ -232,7 +222,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
             countryCode: $countryCode,
         );
 
-        $this->validator->validate($timezone, $constraint);
+        $this->validate($timezone, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', \sprintf('"%s"', $timezone))
@@ -257,7 +247,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
             countryCode: 'foobar',
         );
 
-        $this->validator->validate('Europe/Amsterdam', $constraint);
+        $this->validate('Europe/Amsterdam', $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', '"Europe/Amsterdam"')
@@ -265,26 +255,27 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider getDeprecatedTimezones
-     */
+    #[DataProvider('getDeprecatedTimezones')]
     public function testDeprecatedTimezonesAreValidWithBC(string $timezone)
     {
+        // Skip test if the timezone is not available in the current timezone database
+        if (!\in_array($timezone, \DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC), true)) {
+            $this->markTestSkipped(\sprintf('Timezone "%s" is not available in the current timezone database', $timezone));
+        }
+
         $constraint = new Timezone(\DateTimeZone::ALL_WITH_BC);
 
-        $this->validator->validate($timezone, $constraint);
+        $this->validate($timezone, $constraint);
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @dataProvider getDeprecatedTimezones
-     */
+    #[DataProvider('getDeprecatedTimezones')]
     public function testDeprecatedTimezonesAreInvalidWithoutBC(string $timezone)
     {
         $constraint = new Timezone(message: 'myMessage');
 
-        $this->validator->validate($timezone, $constraint);
+        $this->validate($timezone, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', \sprintf('"%s"', $timezone))
@@ -310,9 +301,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
         yield ['US/Pacific'];
     }
 
-    /**
-     * @requires extension intl
-     */
+    #[RequiresPhpExtension('intl')]
     public function testIntlCompatibility()
     {
         $reflector = new \ReflectionExtension('intl');
@@ -331,7 +320,7 @@ class TimezoneValidatorTest extends ConstraintValidatorTestCase
             intlCompatible: true,
         );
 
-        $this->validator->validate('Europe/Saratov', $constraint);
+        $this->validate('Europe/Saratov', $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', '"Europe/Saratov"')

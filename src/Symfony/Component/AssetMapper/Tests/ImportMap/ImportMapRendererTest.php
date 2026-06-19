@@ -60,10 +60,10 @@ class ImportMapRendererTest extends TestCase
                 ],
             ]);
 
-        $assetPackages = $this->createMock(Packages::class);
-        $assetPackages->expects($this->any())
+        $assetPackages = $this->createStub(Packages::class);
+        $assetPackages
             ->method('getUrl')
-            ->willReturnCallback(function ($path) {
+            ->willReturnCallback(static function ($path) {
                 // try to imitate the behavior of the real service
                 if (str_starts_with($path, 'http') || str_starts_with($path, '/')) {
                     return $path;
@@ -92,7 +92,7 @@ class ImportMapRendererTest extends TestCase
         $this->assertStringContainsString('"app_css_preload": "data:application/javascript,', $html);
         $this->assertStringContainsString('<link rel="stylesheet" href="/subdirectory/assets/styles/app-preload-d1g35t.css">', $html);
         // non-preloaded CSS file
-        $this->assertStringContainsString('"app_css_no_preload": "data:application/javascript,document.head.appendChild%28Object.assign%28document.createElement%28%22link%22%29%2C%7Brel%3A%22stylesheet%22%2Chref%3A%22%2Fsubdirectory%2Fassets%2Fstyles%2Fapp-nopreload-d1g35t.css%22%7D', $html);
+        $this->assertStringContainsString('"app_css_no_preload": "data:application/javascript,document.head.appendChild(Object.assign(document.createElement(\'link\'),{rel:\'stylesheet\',href:\'/subdirectory/assets/styles/app-nopreload-d1g35t.css\'}))', $html);
         $this->assertStringNotContainsString('<link rel="stylesheet" href="/subdirectory/assets/styles/app-nopreload-d1g35t.css">', $html);
         // remote js
         $this->assertStringContainsString('"remote_js": "https://cdn.example.com/assets/remote-d1g35t.js"', $html);
@@ -116,7 +116,7 @@ class ImportMapRendererTest extends TestCase
 
         $renderer = new ImportMapRenderer(
             $importMapGenerator,
-            $this->createMock(Packages::class),
+            $this->createStub(Packages::class),
             polyfillImportName: 'es-module-shims',
         );
         $html = $renderer->render(['app']);
@@ -133,11 +133,30 @@ class ImportMapRendererTest extends TestCase
         $html = $renderer->render([]);
         $this->assertStringContainsString('<script type="importmap" something data-turbo-track="reload">', $html);
         $this->assertStringContainsString('<script something data-turbo-track="reload">', $html);
-        $this->assertStringContainsString(<<<EOTXT
-            script.src = 'https://polyfillUrl.example';
-            script.setAttribute('something', 'something');
-            script.setAttribute('data-turbo-track', 'reload');
-        EOTXT, $html);
+        $this->assertStringContainsString("script.src = 'https://polyfillUrl.example';", $html);
+        $this->assertStringContainsString("script.setAttribute('something', 'something');", $html);
+        $this->assertStringContainsString("script.setAttribute('data-turbo-track', 'reload');", $html);
+    }
+
+    public function testPolyfillBodyIsStableAcrossRequestsWithDifferentNonces()
+    {
+        // Two renders with distinct CSP nonces must produce byte-identical HTML except for the
+        // literal `nonce="..."` attribute on the wrapper <script> tags. Anything else differing
+        // means the per-request value leaked into the rendered body and would break Turbo's
+        // <head> element signature check plus any body-keyed HTTP cache.
+        $renderer1 = new ImportMapRenderer($this->createBasicImportMapGenerator(), null, 'UTF-8', 'es-module-shims');
+        $renderer2 = new ImportMapRenderer($this->createBasicImportMapGenerator(), null, 'UTF-8', 'es-module-shims');
+
+        $html1 = $renderer1->render([], ['nonce' => 'aaaaaaaa']);
+        $html2 = $renderer2->render([], ['nonce' => 'bbbbbbbb']);
+
+        $stripWrapperNonce = static fn (string $html): string => preg_replace('/ nonce="[^"]*"/', '', $html);
+        $this->assertSame($stripWrapperNonce($html1), $stripWrapperNonce($html2));
+
+        // Sanity-check that the runtime propagation hook is in the rendered body, otherwise CSP
+        // would block the dynamically-created polyfill <script> on strict policies without
+        // 'strict-dynamic'.
+        $this->assertStringContainsString('document.currentScript?.nonce', $html1);
     }
 
     public function testWithEntrypoint()
@@ -209,5 +228,20 @@ class ImportMapRendererTest extends TestCase
         $this->assertSame(['preload'], $linkProvider->getLinks()[0]->getRels());
         $this->assertSame(['as' => 'style'], $linkProvider->getLinks()[0]->getAttributes());
         $this->assertSame('/assets/styles/app-preload-d1g35t.css', $linkProvider->getLinks()[0]->getHref());
+    }
+
+    public function testEmptyImportMapRendersAsJsonObject()
+    {
+        $importMapGenerator = $this->createMock(ImportMapGenerator::class);
+        $importMapGenerator->expects($this->once())
+            ->method('getImportMapData')
+            ->with([])
+            ->willReturn([]);
+
+        $renderer = new ImportMapRenderer($importMapGenerator);
+        $html = $renderer->render([]);
+
+        $this->assertStringContainsString('"imports": {}', $html);
+        $this->assertStringNotContainsString('"imports": []', $html);
     }
 }

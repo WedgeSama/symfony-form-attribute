@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Mime\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\ExpectationFailedException;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Mime\Address;
@@ -31,8 +32,51 @@ use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Normalizer\PropertyNormalizer;
 use Symfony\Component\Serializer\Serializer;
 
+class EmailTestToStringGadget
+{
+    public static bool $fired = false;
+
+    public function __toString(): string
+    {
+        self::$fired = true;
+
+        return '';
+    }
+}
+
 class EmailTest extends TestCase
 {
+    #[DataProvider('provideTrampolineSlots')]
+    public function testUnserializeRejectsObjectInTypedCharsetProperty(int $slot)
+    {
+        $email = new Email();
+        $email->text('text body');
+        $email->html('html body');
+        $data = $email->__serialize();
+        $data[$slot] = new EmailTestToStringGadget();
+        $payload = \sprintf('O:%d:"%s":%d:{', \strlen(Email::class), Email::class, \count($data));
+        foreach ($data as $key => $value) {
+            $payload .= serialize($key).serialize($value);
+        }
+        $payload .= '}';
+        EmailTestToStringGadget::$fired = false;
+
+        try {
+            unserialize($payload);
+            $this->fail('Expected BadMethodCallException.');
+        } catch (\BadMethodCallException $e) {
+        }
+
+        $this->assertFalse(EmailTestToStringGadget::$fired, '__toString gadget must not fire during unserialize');
+    }
+
+    public static function provideTrampolineSlots(): iterable
+    {
+        // [text, textCharset, html, htmlCharset, attachments, parentData]
+        yield 'textCharset' => [1];
+        yield 'htmlCharset' => [3];
+    }
+
     public function testSubject()
     {
         $e = new Email();
@@ -464,6 +508,24 @@ class EmailTest extends TestCase
         $this->assertStringMatchesFormat('<div background=3D"cid:%s@symfony"></div>', $parts[0]->bodyToString());
     }
 
+    public function testInlinedPartReferencedViaCidPreservesFilename()
+    {
+        $image = fopen(__DIR__.'/Fixtures/mimetypes/test.gif', 'r');
+        $e = (new Email())->from('me@example.com')->to('you@example.com');
+        $e->html('html content <img src="cid:logo-image.gif">');
+        $e->addPart((new DataPart($image, 'logo-image.gif'))->asInline());
+
+        $body = $e->getBody();
+        $this->assertInstanceOf(RelatedPart::class, $body);
+        $parts = $body->getParts();
+        $inlinePart = $parts[1];
+
+        $this->assertSame('logo-image.gif', $inlinePart->getName());
+        $headers = $inlinePart->getPreparedHeaders()->toString();
+        $this->assertStringContainsString('name=logo-image.gif', $headers);
+        $this->assertStringNotContainsString('name='.$inlinePart->getContentId(), $headers);
+    }
+
     private function generateSomeParts(): array
     {
         $text = new TextPart('text content');
@@ -477,7 +539,7 @@ class EmailTest extends TestCase
     public function testAttachments()
     {
         // inline part
-        $contents = file_get_contents($name = __DIR__.'/Fixtures/mimetypes/test', 'r');
+        $contents = file_get_contents($name = __DIR__.'/Fixtures/mimetypes/test');
         $att = new DataPart($file = fopen($name, 'r'), 'test');
         $inline = (new DataPart($contents, 'test'))->asInline();
         $e = new Email();
@@ -491,8 +553,8 @@ class EmailTest extends TestCase
         $e = new Email();
         $e->addPart(new DataPart(new File($name)));
         $e->addPart((new DataPart(new File($name)))->asInline());
-        $this->assertEquals([$att->bodyToString(), $inline->bodyToString()], array_map(fn (DataPart $a) => $a->bodyToString(), $e->getAttachments()));
-        $this->assertEquals([$att->getPreparedHeaders(), $inline->getPreparedHeaders()], array_map(fn (DataPart $a) => $a->getPreparedHeaders(), $e->getAttachments()));
+        $this->assertEquals([$att->bodyToString(), $inline->bodyToString()], array_map(static fn (DataPart $a) => $a->bodyToString(), $e->getAttachments()));
+        $this->assertEquals([$att->getPreparedHeaders(), $inline->getPreparedHeaders()], array_map(static fn (DataPart $a) => $a->getPreparedHeaders(), $e->getAttachments()));
     }
 
     public function testSerialize()
@@ -529,44 +591,44 @@ class EmailTest extends TestCase
         $expected = clone $e;
 
         $expectedJson = <<<EOF
-{
-    "text": "Text content",
-    "textCharset": "utf-8",
-    "html": "HTML <b>content</b>",
-    "htmlCharset": "utf-8",
-    "attachments": [
-        {
-            "filename": "test.txt",
-            "mediaType": "application",
-            "body": "Some Text file",
-            "charset": null,
-            "subtype": "octet-stream",
-            "disposition": "attachment",
-            "name": "test.txt",
-            "encoding": "base64",
-            "headers": [],
-            "class": "Symfony\\\Component\\\Mime\\\Part\\\DataPart"
-        }
-    ],
-    "headers": {
-        "to": [
             {
-                "addresses": [
+                "text": "Text content",
+                "textCharset": "utf-8",
+                "html": "HTML <b>content</b>",
+                "htmlCharset": "utf-8",
+                "attachments": [
                     {
-                        "address": "you@example.com",
-                        "name": ""
+                        "filename": "test.txt",
+                        "mediaType": "application",
+                        "body": "Some Text file",
+                        "charset": null,
+                        "subtype": "octet-stream",
+                        "disposition": "attachment",
+                        "name": "test.txt",
+                        "encoding": "base64",
+                        "headers": [],
+                        "class": "Symfony\\\Component\\\Mime\\\Part\\\DataPart"
                     }
                 ],
-                "name": "To",
-                "lineLength": 76,
-                "lang": null,
-                "charset": "utf-8"
+                "headers": {
+                    "to": [
+                        {
+                            "addresses": [
+                                {
+                                    "address": "you@example.com",
+                                    "name": ""
+                                }
+                            ],
+                            "name": "To",
+                            "lineLength": 76,
+                            "lang": null,
+                            "charset": "utf-8"
+                        }
+                    ]
+                },
+                "body": null
             }
-        ]
-    },
-    "body": null
-}
-EOF;
+            EOF;
 
         $extractor = new PhpDocExtractor();
         $propertyNormalizer = new PropertyNormalizer(null, null, $extractor);
@@ -618,7 +680,7 @@ EOF;
         $email->html(null);
         $this->assertNull($email->getHtmlBody());
 
-        $contents = file_get_contents(__DIR__.'/Fixtures/mimetypes/test', 'r');
+        $contents = file_get_contents(__DIR__.'/Fixtures/mimetypes/test');
         $email->html($contents);
         $this->assertSame($contents, $email->getHtmlBody());
     }
@@ -641,7 +703,7 @@ EOF;
         $email->text(null);
         $this->assertNull($email->getTextBody());
 
-        $contents = file_get_contents(__DIR__.'/Fixtures/mimetypes/test', 'r');
+        $contents = file_get_contents(__DIR__.'/Fixtures/mimetypes/test');
         $email->text($contents);
         $this->assertSame($contents, $email->getTextBody());
     }

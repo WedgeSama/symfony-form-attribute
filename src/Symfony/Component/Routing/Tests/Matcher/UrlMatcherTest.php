@@ -12,6 +12,7 @@
 namespace Symfony\Component\Routing\Tests\Matcher;
 
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Exception\MethodNotAllowedException;
 use Symfony\Component\Routing\Exception\NoConfigurationException;
 use Symfony\Component\Routing\Exception\ResourceNotFoundException;
@@ -22,6 +23,17 @@ use Symfony\Component\Routing\RouteCollection;
 
 class UrlMatcherTest extends TestCase
 {
+    public function testZero()
+    {
+        $coll = new RouteCollection();
+        $coll->add('index', new Route('/'));
+
+        $matcher = $this->getUrlMatcher($coll);
+
+        $this->expectException(ResourceNotFoundException::class);
+        $matcher->match('0');
+    }
+
     public function testNoMethodSoAllowed()
     {
         $coll = new RouteCollection();
@@ -44,6 +56,33 @@ class UrlMatcherTest extends TestCase
         } catch (MethodNotAllowedException $e) {
             $this->assertEquals(['POST'], $e->getAllowedMethods());
         }
+    }
+
+    public function testMatchRequestHonorsTheRequestsMethodOverTheStaticContext()
+    {
+        $coll = new RouteCollection();
+        $coll->add('foo', new Route('/foo', [], [], [], '', [], ['GET']));
+
+        $matcher = $this->getUrlMatcher($coll, new RequestContext('', 'POST'));
+
+        $this->assertSame(
+            ['_route' => 'foo'],
+            $matcher->matchRequest(Request::create('/foo', 'GET'))
+        );
+    }
+
+    public function testMatchRequestRestoresTheContextAfterwards()
+    {
+        $coll = new RouteCollection();
+        $coll->add('foo', new Route('/foo', [], [], [], '', [], ['GET']));
+
+        $originalContext = new RequestContext('', 'POST', 'example.com');
+        $matcher = $this->getUrlMatcher($coll, $originalContext);
+        $matcher->matchRequest(Request::create('https://other.example/foo', 'GET'));
+
+        $this->assertSame('POST', $originalContext->getMethod());
+        $this->assertSame('example.com', $originalContext->getHost());
+        $this->assertSame($originalContext, $matcher->getContext());
     }
 
     public function testMethodNotAllowedOnRoot()
@@ -1000,6 +1039,30 @@ class UrlMatcherTest extends TestCase
         $this->assertEquals(['_route' => 'foo', 'bär' => 'baz', 'bäz' => 'foo'], $matcher->match('/foo/baz'));
     }
 
+    public function testParameterWithRequirementWithDefault()
+    {
+        $collection = new RouteCollection();
+
+        $route = new Route('/test/{foo}', ['foo' => 'foo-'], ['foo' => '\w+']);
+        $collection->add('test', $route);
+
+        $matcher = $this->getUrlMatcher($collection);
+
+        $result = $matcher->match('/test/foo');
+        $this->assertSame('test', $result['_route']);
+        $this->assertSame('foo', $result['foo']);
+
+        try {
+            $matcher->match('/test/foo-');
+        } catch (ResourceNotFoundException $e) {
+            $this->assertStringContainsString('No routes found', $e->getMessage());
+        }
+
+        $result = $matcher->match('/test');
+        $this->assertSame('test', $result['_route']);
+        $this->assertSame('foo-', $result['foo']);
+    }
+
     public function testMapping()
     {
         $collection = new RouteCollection();
@@ -1011,10 +1074,7 @@ class UrlMatcherTest extends TestCase
             '_route' => 'a',
             'slug' => 'vienna-2024',
             '_route_mapping' => [
-                'slug' => [
-                    'conference',
-                    'slug',
-                ],
+                'slug' => 'conference',
             ],
         ];
         $this->assertEquals($expected, $matcher->match('/conference/vienna-2024'));

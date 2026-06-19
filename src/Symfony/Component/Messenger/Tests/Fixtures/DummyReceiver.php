@@ -20,6 +20,7 @@ class DummyReceiver implements ReceiverInterface
     private array $rejectedEnvelopes = [];
     private int $acknowledgeCount = 0;
     private int $rejectCount = 0;
+    private array $fetchSizes = [];
 
     /**
      * @param Envelope[][] $deliveriesOfEnvelopes
@@ -29,8 +30,13 @@ class DummyReceiver implements ReceiverInterface
     ) {
     }
 
-    public function get(): iterable
+    /**
+     * @param int $fetchSize
+     */
+    public function get(/* int $fetchSize = 1 */): iterable
     {
+        $this->fetchSizes[] = \func_num_args() > 0 ? func_get_arg(0) : 1;
+
         $val = array_shift($this->deliveriesOfEnvelopes);
 
         return $val ?? [];
@@ -61,5 +67,15 @@ class DummyReceiver implements ReceiverInterface
     public function getAcknowledgedEnvelopes(): array
     {
         return $this->acknowledgedEnvelopes;
+    }
+
+    public function getRejectedEnvelopes(): array
+    {
+        return $this->rejectedEnvelopes;
+    }
+
+    public function getFetchSizes(): array
+    {
+        return $this->fetchSizes;
     }
 }

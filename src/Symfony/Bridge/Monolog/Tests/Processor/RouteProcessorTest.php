@@ -15,7 +15,6 @@ use Monolog\LogRecord;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bridge\Monolog\Processor\RouteProcessor;
 use Symfony\Bridge\Monolog\Tests\RecordFactory;
-use Symfony\Component\HttpFoundation\ParameterBag;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\FinishRequestEvent;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
@@ -127,12 +126,12 @@ class RouteProcessorTest extends TestCase
 
     private function getRequestEvent(Request $request, int $requestType = HttpKernelInterface::MAIN_REQUEST): RequestEvent
     {
-        return new RequestEvent($this->createMock(HttpKernelInterface::class), $request, $requestType);
+        return new RequestEvent($this->createStub(HttpKernelInterface::class), $request, $requestType);
     }
 
     private function getFinishRequestEvent(Request $request): FinishRequestEvent
     {
-        return new FinishRequestEvent($this->createMock(HttpKernelInterface::class), $request, HttpKernelInterface::MAIN_REQUEST);
+        return new FinishRequestEvent($this->createStub(HttpKernelInterface::class), $request, HttpKernelInterface::MAIN_REQUEST);
     }
 
     private function mockEmptyRequest(): Request
@@ -151,10 +150,7 @@ class RouteProcessorTest extends TestCase
 
     private function mockRequest(array $attributes): Request
     {
-        $request = $this->createMock(Request::class);
-        $request->attributes = new ParameterBag($attributes);
-
-        return $request;
+        return new Request([], [], $attributes);
     }
 
     private function createRecord(): LogRecord

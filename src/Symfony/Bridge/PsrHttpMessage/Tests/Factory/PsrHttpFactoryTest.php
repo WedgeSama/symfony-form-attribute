@@ -12,6 +12,7 @@
 namespace Symfony\Bridge\PsrHttpMessage\Tests\Factory;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -35,9 +36,7 @@ class PsrHttpFactoryTest extends TestCase
         $this->tmpDir = sys_get_temp_dir();
     }
 
-    /**
-     * @dataProvider provideFactories
-     */
+    #[DataProvider('provideFactories')]
     public function testCreateRequest(PsrHttpFactory $factory)
     {
         $stdClass = new \stdClass();
@@ -137,9 +136,7 @@ class PsrHttpFactoryTest extends TestCase
         return new UploadedFile($path, $originalName, $mimeType, $error, true);
     }
 
-    /**
-     * @dataProvider provideFactories
-     */
+    #[DataProvider('provideFactories')]
     public function testCreateResponse(PsrHttpFactory $factory)
     {
         $response = new Response(
@@ -167,7 +164,7 @@ class PsrHttpFactoryTest extends TestCase
 
     public function testCreateResponseFromStreamed()
     {
-        $response = new StreamedResponse(function () {
+        $response = new StreamedResponse(static function () {
             echo "Line 1\n";
             flush();
 
@@ -277,7 +274,7 @@ class PsrHttpFactoryTest extends TestCase
     public static function provideFactories(): \Generator
     {
         yield 'Discovery' => [new PsrHttpFactory()];
-        yield 'incomplete dependencies' => [new PsrHttpFactory(responseFactory: new Psr17Factory())];
+        yield 'incomplete dependencies' => [new PsrHttpFactory(null, null, null, new Psr17Factory())];
         yield 'Nyholm' => [self::buildHttpMessageFactory()];
     }
 

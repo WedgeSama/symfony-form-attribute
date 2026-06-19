@@ -54,7 +54,13 @@ class ProjectServiceContainer extends Container
             return $container->services['foo'];
         }
 
-        return $container->services['foo'] = new \Symfony\Component\DependencyInjection\Tests\Compiler\AAndIInterfaceConsumer($a);
+        $instance = new \Symfony\Component\DependencyInjection\Tests\Compiler\AAndIInterfaceConsumer($a);
+
+        if (isset($container->services['foo'])) {
+            return $container->services['foo'];
+        }
+
+        return $container->services['foo'] = $instance;
     }
 
     /**
@@ -85,5 +91,4 @@ class objectProxy1fd6daa implements \Symfony\Component\DependencyInjection\Tests
 }
 
 // Help opcache.preload discover always-needed symbols
-class_exists(\Symfony\Component\VarExporter\Internal\Hydrator::class);
 class_exists(\Symfony\Component\VarExporter\Internal\LazyObjectRegistry::class);

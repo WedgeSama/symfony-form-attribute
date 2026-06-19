@@ -194,6 +194,10 @@ class Serializer implements SerializerInterface, NormalizerInterface, Denormaliz
             throw new LogicException('Passing a value for "not_normalizable_value_exceptions" context key is not allowed.');
         }
 
+        if (isset($context[DenormalizerInterface::COLLECT_EXTRA_ATTRIBUTES_ERRORS], $context['extra_attributes_exceptions'])) {
+            throw new LogicException('Passing a value for "extra_attributes_exceptions" context key is not allowed.');
+        }
+
         $normalizer = $this->getDenormalizer($data, $type, $format, $context);
 
         // Check for a denormalizer first, e.g. the data is wrapped
@@ -213,31 +217,40 @@ class Serializer implements SerializerInterface, NormalizerInterface, Denormaliz
             throw new NotNormalizableValueException(\sprintf('Could not denormalize object of type "%s", no supporting normalizer found.', $type));
         }
 
-        if (isset($context[DenormalizerInterface::COLLECT_DENORMALIZATION_ERRORS]) || isset($this->defaultContext[DenormalizerInterface::COLLECT_DENORMALIZATION_ERRORS])) {
+        $collectNotNormalizable = (isset($context[DenormalizerInterface::COLLECT_DENORMALIZATION_ERRORS]) || isset($this->defaultContext[DenormalizerInterface::COLLECT_DENORMALIZATION_ERRORS])) && !isset($context['not_normalizable_value_exceptions']);
+        $collectExtraAttributes = ($context[DenormalizerInterface::COLLECT_EXTRA_ATTRIBUTES_ERRORS] ?? $this->defaultContext[DenormalizerInterface::COLLECT_EXTRA_ATTRIBUTES_ERRORS] ?? false) && !isset($context['extra_attributes_exceptions']);
+
+        $notNormalizableErrors = [];
+        $extraAttributesExceptions = [];
+
+        if ($collectNotNormalizable) {
             unset($context[DenormalizerInterface::COLLECT_DENORMALIZATION_ERRORS]);
-            $context['not_normalizable_value_exceptions'] = [];
-            $errors = &$context['not_normalizable_value_exceptions'];
-            $denormalized = $normalizer->denormalize($data, $type, $format, $context);
-
-            if ($errors) {
-                // merge errors so that one path has only one error
-                $uniqueErrors = [];
-                foreach ($errors as $error) {
-                    if (null === $error->getPath()) {
-                        $uniqueErrors[] = $error;
-                        continue;
-                    }
-
-                    $uniqueErrors[$error->getPath()] = $uniqueErrors[$error->getPath()] ?? $error;
-                }
-
-                throw new PartialDenormalizationException($denormalized, array_values($uniqueErrors));
-            }
-
-            return $denormalized;
+            $context['not_normalizable_value_exceptions'] = &$notNormalizableErrors;
         }
 
-        return $normalizer->denormalize($data, $type, $format, $context);
+        if ($collectExtraAttributes) {
+            unset($context[DenormalizerInterface::COLLECT_EXTRA_ATTRIBUTES_ERRORS]);
+            $context['extra_attributes_exceptions'] = &$extraAttributesExceptions;
+        }
+
+        $denormalized = $normalizer->denormalize($data, $type, $format, $context);
+
+        if ($notNormalizableErrors || $extraAttributesExceptions) {
+            // merge errors so that one path has only one error
+            $uniqueErrors = [];
+            foreach ($notNormalizableErrors as $error) {
+                if (null === $error->getPath()) {
+                    $uniqueErrors[] = $error;
+                    continue;
+                }
+
+                $uniqueErrors[$error->getPath()] ??= $error;
+            }
+
+            throw new PartialDenormalizationException($denormalized, array_values($uniqueErrors), $extraAttributesExceptions);
+        }
+
+        return $denormalized;
     }
 
     public function getSupportedTypes(?string $format): array
@@ -272,8 +285,8 @@ class Serializer implements SerializerInterface, NormalizerInterface, Denormaliz
             $genericType = '*';
         }
 
-        if (!isset($this->normalizerCache[$format][$type])) {
-            $this->normalizerCache[$format][$type] = [];
+        if (!isset($this->normalizerCache[$format ?? ''][$type])) {
+            $this->normalizerCache[$format ?? ''][$type] = [];
 
             foreach ($this->normalizers as $k => $normalizer) {
                 if (!$normalizer instanceof NormalizerInterface) {
@@ -291,7 +304,7 @@ class Serializer implements SerializerInterface, NormalizerInterface, Denormaliz
 
                     if (null === $isCacheable) {
                         unset($supportedTypes['*'], $supportedTypes['object']);
-                    } elseif ($this->normalizerCache[$format][$type][$k] = $isCacheable && $normalizer->supportsNormalization($data, $format, $context)) {
+                    } elseif ($this->normalizerCache[$format ?? ''][$type][$k] = $isCacheable && $normalizer->supportsNormalization($data, $format, $context)) {
                         break 2;
                     }
 
@@ -302,13 +315,13 @@ class Serializer implements SerializerInterface, NormalizerInterface, Denormaliz
                     continue;
                 }
 
-                if ($this->normalizerCache[$format][$type][$k] ??= $isCacheable && $normalizer->supportsNormalization($data, $format, $context)) {
+                if ($this->normalizerCache[$format ?? ''][$type][$k] ??= $isCacheable && $normalizer->supportsNormalization($data, $format, $context)) {
                     break;
                 }
             }
         }
 
-        foreach ($this->normalizerCache[$format][$type] as $k => $cached) {
+        foreach ($this->normalizerCache[$format ?? ''][$type] as $k => $cached) {
             $normalizer = $this->normalizers[$k];
             if ($cached || $normalizer->supportsNormalization($data, $format, $context)) {
                 return $normalizer;
@@ -328,8 +341,8 @@ class Serializer implements SerializerInterface, NormalizerInterface, Denormaliz
      */
     private function getDenormalizer(mixed $data, string $class, ?string $format, array $context): ?DenormalizerInterface
     {
-        if (!isset($this->denormalizerCache[$format][$class])) {
-            $this->denormalizerCache[$format][$class] = [];
+        if (!isset($this->denormalizerCache[$format ?? ''][$class])) {
+            $this->denormalizerCache[$format ?? ''][$class] = [];
             $genericType = class_exists($class) || interface_exists($class, false) ? 'object' : '*';
 
             foreach ($this->normalizers as $k => $normalizer) {
@@ -351,7 +364,7 @@ class Serializer implements SerializerInterface, NormalizerInterface, Denormaliz
 
                     if (null === $isCacheable) {
                         unset($supportedTypes['*'], $supportedTypes['object']);
-                    } elseif ($this->denormalizerCache[$format][$class][$k] = $isCacheable && $normalizer->supportsDenormalization(null, $class, $format, $context)) {
+                    } elseif ($this->denormalizerCache[$format ?? ''][$class][$k] = $isCacheable && $normalizer->supportsDenormalization(null, $class, $format, $context)) {
                         break 2;
                     }
 
@@ -362,13 +375,13 @@ class Serializer implements SerializerInterface, NormalizerInterface, Denormaliz
                     continue;
                 }
 
-                if ($this->denormalizerCache[$format][$class][$k] ??= $isCacheable && $normalizer->supportsDenormalization(null, $class, $format, $context)) {
+                if ($this->denormalizerCache[$format ?? ''][$class][$k] ??= $isCacheable && $normalizer->supportsDenormalization(null, $class, $format, $context)) {
                     break;
                 }
             }
         }
 
-        foreach ($this->denormalizerCache[$format][$class] as $k => $cached) {
+        foreach ($this->denormalizerCache[$format ?? ''][$class] as $k => $cached) {
             $normalizer = $this->normalizers[$k];
             if ($cached || $normalizer->supportsDenormalization($data, $class, $format, $context)) {
                 return $normalizer;

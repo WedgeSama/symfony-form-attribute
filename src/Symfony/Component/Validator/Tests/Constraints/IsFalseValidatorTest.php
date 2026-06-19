@@ -24,38 +24,21 @@ class IsFalseValidatorTest extends ConstraintValidatorTestCase
 
     public function testNullIsValid()
     {
-        $this->validator->validate(null, new IsFalse());
+        $this->validate(null, new IsFalse());
 
         $this->assertNoViolation();
     }
 
     public function testFalseIsValid()
     {
-        $this->validator->validate(false, new IsFalse());
+        $this->validate(false, new IsFalse());
 
         $this->assertNoViolation();
     }
 
     public function testTrueIsInvalid()
     {
-        $this->validator->validate(true, new IsFalse(message: 'myMessage'));
-
-        $this->buildViolation('myMessage')
-            ->setParameter('{{ value }}', 'true')
-            ->setCode(IsFalse::NOT_FALSE_ERROR)
-            ->assertRaised();
-    }
-
-    /**
-     * @group legacy
-     */
-    public function testTrueIsInvalidDoctrineStyle()
-    {
-        $constraint = new IsFalse([
-            'message' => 'myMessage',
-        ]);
-
-        $this->validator->validate(true, $constraint);
+        $this->validate(true, new IsFalse(message: 'myMessage'));
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', 'true')

@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Validator\Constraints\Unique;
 use Symfony\Component\Validator\Constraints\UniqueValidator;
 use Symfony\Component\Validator\Exception\UnexpectedTypeException;
@@ -28,15 +29,13 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
     public function testExpectsUniqueConstraintCompatibleType()
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->validator->validate('', new Unique());
+        $this->validate('', new Unique());
     }
 
-    /**
-     * @dataProvider getValidValues
-     */
+    #[DataProvider('getValidValues')]
     public function testValidValues($value)
     {
-        $this->validator->validate($value, new Unique());
+        $this->validate($value, new Unique());
 
         $this->assertNoViolation();
     }
@@ -58,13 +57,11 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
         ];
     }
 
-    /**
-     * @dataProvider getInvalidValues
-     */
+    #[DataProvider('getInvalidValues')]
     public function testInvalidValues($value, $expectedMessageParam)
     {
         $constraint = new Unique(message: 'myMessage');
-        $this->validator->validate($value, $constraint);
+        $this->validate($value, $constraint);
 
         $this->buildViolation('myMessage')
              ->setParameter('{{ value }}', $expectedMessageParam)
@@ -89,7 +86,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
     public function testInvalidValueNamed()
     {
         $constraint = new Unique(message: 'myMessage');
-        $this->validator->validate([1, 2, 3, 3], $constraint);
+        $this->validate([1, 2, 3, 3], $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', '3')
@@ -97,9 +94,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider getCallback
-     */
+    #[DataProvider('getCallback')]
     public function testExpectsUniqueObjects($callback)
     {
         $object1 = new \stdClass();
@@ -116,14 +111,12 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
 
         $value = [$object1, $object2, $object3];
 
-        $this->validator->validate($value, new Unique(normalizer: $callback));
+        $this->validate($value, new Unique(normalizer: $callback));
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @dataProvider getCallback
-     */
+    #[DataProvider('getCallback')]
     public function testExpectsNonUniqueObjects($callback)
     {
         $object1 = new \stdClass();
@@ -140,7 +133,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
 
         $value = [$object1, $object2, $object3];
 
-        $this->validator->validate($value, new Unique(
+        $this->validate($value, new Unique(
             message: 'myMessage',
             normalizer: $callback,
         ));
@@ -164,7 +157,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
 
     public function testExpectsInvalidNonStrictComparison()
     {
-        $this->validator->validate([1, '1', 1.0, '1.0'], new Unique(
+        $this->validate([1, '1', 1.0, '1.0'], new Unique(
             message: 'myMessage',
             normalizer: 'intval',
         ));
@@ -179,7 +172,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
     {
         $callback = static fn ($item) => (int) $item;
 
-        $this->validator->validate([1, '2', 3, '4.0'], new Unique(normalizer: $callback));
+        $this->validate([1, '2', 3, '4.0'], new Unique(normalizer: $callback));
 
         $this->assertNoViolation();
     }
@@ -188,7 +181,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
     {
         $callback = static fn ($item) => mb_strtolower($item);
 
-        $this->validator->validate(['Hello', 'hello', 'HELLO', 'hellO'], new Unique(
+        $this->validate(['Hello', 'hello', 'HELLO', 'hellO'], new Unique(
             message: 'myMessage',
             normalizer: $callback,
         ));
@@ -203,27 +196,25 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
     {
         $callback = static fn ($item) => mb_strtolower($item);
 
-        $this->validator->validate(['Hello', 'World'], new Unique(normalizer: $callback));
+        $this->validate(['Hello', 'World'], new Unique(normalizer: $callback));
 
         $this->assertNoViolation();
     }
 
     public function testCollectionFieldsAreOptional()
     {
-        $this->validator->validate([['value' => 5], ['id' => 1, 'value' => 6]], new Unique(fields: 'id'));
+        $this->validate([['value' => 5], ['id' => 1, 'value' => 6]], new Unique(fields: 'id'));
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @dataProvider getInvalidFieldNames
-     */
+    #[DataProvider('getInvalidFieldNames')]
     public function testCollectionFieldNamesMustBeString(string $type, mixed $field)
     {
         $this->expectException(UnexpectedTypeException::class);
         $this->expectExceptionMessage(\sprintf('Expected argument of type "string", "%s" given', $type));
 
-        $this->validator->validate([['value' => 5], ['id' => 1, 'value' => 6]], new Unique(fields: [$field]));
+        $this->validate([['value' => 5], ['id' => 1, 'value' => 6]], new Unique(fields: [$field]));
     }
 
     public static function getInvalidFieldNames(): array
@@ -235,12 +226,32 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
         ];
     }
 
-    /**
-     * @dataProvider getInvalidCollectionValues
-     */
+    #[DataProvider('getValidCollectionValues')]
+    public function testValidCollectionValues(array $value, array $fields)
+    {
+        $this->validate($value, new Unique(fields: $fields));
+
+        $this->assertNoViolation();
+    }
+
+    public static function getValidCollectionValues(): array
+    {
+        return [
+            'unique empty item' => [
+                [['field' => 1], ['field' => 2], []],
+                ['field'],
+            ],
+            'unique non-array item' => [
+                [['field' => 1], ['field' => 2], '', 1, null],
+                ['field'],
+            ],
+        ];
+    }
+
+    #[DataProvider('getInvalidCollectionValues')]
     public function testInvalidCollectionValues(array $value, array $fields, string $expectedMessageParam)
     {
-        $this->validator->validate($value, new Unique(
+        $this->validate($value, new Unique(
             message: 'myMessage',
             fields: $fields,
         ));
@@ -292,7 +303,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
         $array[1]->code = '2';
         $array[2]->code = '3';
 
-        $this->validator->validate(
+        $this->validate(
             $array,
             new Unique(
                 normalizer: [self::class, 'normalizeDummyClassOne'],
@@ -315,7 +326,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
         $array[1]->code = 'a2';
         $array[2]->code = 'a1';
 
-        $this->validator->validate(
+        $this->validate(
             $array,
             new Unique(
                 normalizer: [self::class, 'normalizeDummyClassOne'],
@@ -343,7 +354,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
         $array[1]->code = 'a2';
         $array[2]->code = 'a1';
 
-        $this->validator->validate(
+        $this->validate(
             $array,
             new Unique(
                 normalizer: [self::class, 'normalizeDummyClassOne'],
@@ -371,7 +382,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
         $array['b']->code = 'a2';
         $array['c']->code = 'a1';
 
-        $this->validator->validate(
+        $this->validate(
             $array,
             new Unique(
                 normalizer: [self::class, 'normalizeDummyClassOne'],
@@ -389,7 +400,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
 
     public function testWithoutStopOnFirstError()
     {
-        $this->validator->validate(
+        $this->validate(
             ['a1', 'a2', 'a1', 'a1', 'a2'],
             new Unique(stopOnFirstError: false),
         );
@@ -429,7 +440,7 @@ class UniqueValidatorTest extends ConstraintValidatorTestCase
         $array[3]->code = 'a1';
         $array[4]->code = 'a2';
 
-        $this->validator->validate(
+        $this->validate(
             $array,
             new Unique(
                 normalizer: [self::class, 'normalizeDummyClassOne'],

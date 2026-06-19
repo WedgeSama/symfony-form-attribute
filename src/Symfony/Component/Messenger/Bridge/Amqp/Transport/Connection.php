@@ -79,6 +79,7 @@ class Connection
         'default_publish_routing_key',
         'flags',
         'arguments',
+        'bindings',
     ];
 
     private AmqpFactory $amqpFactory;
@@ -94,6 +95,7 @@ class Connection
 
     private \AMQPExchange $amqpDelayExchange;
     private int $lastActivityTime = 0;
+    private int $inFlightMessages = 0;
 
     public function __construct(
         #[\SensitiveParameter] private array $connectionOptions,
@@ -103,6 +105,11 @@ class Connection
     ) {
         if (!\extension_loaded('amqp')) {
             throw new LogicException(\sprintf('You cannot use the "%s" as the "amqp" extension is not installed.', __CLASS__));
+        }
+
+        if (isset($connectionOptions['user'])) {
+            $connectionOptions['login'] ??= $connectionOptions['user'];
+            unset($connectionOptions['user']);
         }
 
         $this->connectionOptions = array_replace_recursive([
@@ -134,16 +141,24 @@ class Connection
      *     * binding_arguments: Arguments to be used while binding the queue.
      *     * flags: Queue flags (Default: AMQP_DURABLE)
      *     * arguments: Extra arguments
+     *   * queues: Set to false (or "queues=false" in the DSN query) to skip binding the default "messages" queue when no queues are defined
      *   * exchange:
      *     * name: Name of the exchange. An empty string (name: '') can be used to use the default exchange
      *     * type: Type of exchange (Default: fanout)
      *     * default_publish_routing_key: Routing key to use when publishing, if none is specified on the message
      *     * flags: Exchange flags (Default: AMQP_DURABLE)
      *     * arguments: Extra arguments
+     *     * bindings[name]: An array of the source exchanges to bind this exchange to, keyed by the name. Binding direction: source exchange -> this exchange
+     *       * binding_keys: The binding/routing keys to be used for the binding
+     *       * binding_arguments: Additional binding arguments
      *   * delay:
      *     * queue_name_pattern: Pattern to use to create the queues (Default: "delay_%exchange_name%_%routing_key%_%delay%")
      *     * exchange_name: Name of the exchange to be used for the delayed/retried messages (Default: "delays")
      *     * arguments: array of extra delay queue arguments (for example:  ['x-queue-type' => 'classic', 'x-message-deduplication' => true,])
+     *     * daily_delay_queues: When true, the current date is appended to the delay queue names
+     *       (e.g. "delay_messages__5000_delay_2025-04-28") and their "x-expires" argument is increased by 24 hours
+     *       (24 * 60 * 60 * 1000 ms), so RabbitMQ deletes them automatically once the day is over. This is useful for
+     *       quorum queues, which do not allow redeclaring a queue to renew its lease. (Default: false)
      *   * auto_setup: Enable or not the auto-setup of queues and exchanges (Default: true)
      *
      *   * Connection tuning options (see http://www.rabbitmq.com/amqp-0-9-1-reference.html#connection.tune for details):
@@ -166,7 +181,7 @@ class Connection
     {
         if (false === $params = parse_url($dsn)) {
             // this is a valid URI that parse_url cannot handle when you want to pass all parameters as options
-            if (!\in_array($dsn, ['amqp://', 'amqps://'])) {
+            if (!\in_array($dsn, ['amqp://', 'amqps://'], true)) {
                 throw new InvalidArgumentException('The given AMQP DSN is invalid.');
             }
 
@@ -198,18 +213,23 @@ class Connection
             $amqpOptions['password'] = rawurldecode($params['pass']);
         }
 
-        if (!isset($amqpOptions['queues'])) {
-            $amqpOptions['queues'][$exchangeName] = [];
+        if (!\is_array($queuesOptions = $amqpOptions['queues'] ?? true)) {
+            $queuesOptions = filter_var($queuesOptions, \FILTER_VALIDATE_BOOL) ? [$exchangeName => []] : [];
+        } else {
+            $queuesOptions = $amqpOptions['queues'];
         }
 
         $exchangeOptions = $amqpOptions['exchange'];
-        $queuesOptions = $amqpOptions['queues'];
         unset($amqpOptions['queues'], $amqpOptions['exchange']);
         if (isset($amqpOptions['auto_setup'])) {
             $amqpOptions['auto_setup'] = filter_var($amqpOptions['auto_setup'], \FILTER_VALIDATE_BOOL);
         }
 
-        $queuesOptions = array_map(function ($queueOptions) {
+        if (isset($amqpOptions['delay']['daily_delay_queues'])) {
+            $amqpOptions['delay']['daily_delay_queues'] = filter_var($amqpOptions['delay']['daily_delay_queues'], \FILTER_VALIDATE_BOOL);
+        }
+
+        $queuesOptions = array_map(static function ($queueOptions) {
             if (!\is_array($queueOptions)) {
                 $queueOptions = [];
             }
@@ -289,7 +309,7 @@ class Connection
         }
 
         $this->withConnectionExceptionRetry(function () use ($body, $headers, $delayInMs, $amqpStamp) {
-            if (0 !== $delayInMs) {
+            if (0 < $delayInMs) {
                 $this->publishWithDelay($body, $headers, $delayInMs, $amqpStamp);
 
                 return;
@@ -390,11 +410,14 @@ class Connection
         $queue = $this->amqpFactory->createQueue($this->channel());
         $queue->setName($this->getRoutingKeyForDelay($delay, $routingKey, $isRetryAttempt));
         $queue->setFlags(\AMQP_DURABLE);
+        $queueExpirationBase = ($this->connectionOptions['delay']['daily_delay_queues'] ?? false) ? 24 * 60 * 60 * 1000 : 0;
         $queue->setArguments(array_merge([
             'x-message-ttl' => $delay,
             // delete the delay queue 10 seconds after the message expires
-            // publishing another message redeclares the queue which renews the lease
-            'x-expires' => $delay + 10000,
+            // publishing another message redeclares the queue which renews the lease;
+            // quorum queues cannot be redeclared, so daily_delay_queues=true adds 24 hours (24 * 60 * 60 * 1000 ms)
+            // to the lease and uses a per-day queue name instead, letting RabbitMQ clean up old queues by itself
+            'x-expires' => $queueExpirationBase + $delay + 10000,
             // message should be broadcast to all consumers during delay, but to only one queue during retry
             // empty name is default direct exchange
             'x-dead-letter-exchange' => $isRetryAttempt ? '' : $this->exchangeOptions['name'],
@@ -409,12 +432,13 @@ class Connection
     private function getRoutingKeyForDelay(int $delay, ?string $finalRoutingKey, bool $isRetryAttempt): string
     {
         $action = $isRetryAttempt ? '_retry' : '_delay';
+        $date = ($this->connectionOptions['delay']['daily_delay_queues'] ?? false) ? '_'.date('Y-m-d') : '';
 
         return str_replace(
             ['%delay%', '%exchange_name%', '%routing_key%'],
             [$delay, $this->exchangeOptions['name'], $finalRoutingKey ?? ''],
             $this->connectionOptions['delay']['queue_name_pattern']
-        ).$action;
+        ).$action.$date;
     }
 
     /**
@@ -431,20 +455,35 @@ class Connection
         }
 
         if (false !== $message = $this->queue($queueName)->get()) {
+            ++$this->inFlightMessages;
+            $this->lastActivityTime = time();
+
             return $message;
         }
+
+        $this->lastActivityTime = time();
 
         return null;
     }
 
     public function ack(\AMQPEnvelope $message, string $queueName): bool
     {
-        return $this->queue($queueName)->ack($message->getDeliveryTag()) ?? true;
+        try {
+            return $this->queue($queueName)->ack($message->getDeliveryTag()) ?? true;
+        } finally {
+            $this->lastActivityTime = time();
+            $this->inFlightMessages = max(0, $this->inFlightMessages - 1);
+        }
     }
 
     public function nack(\AMQPEnvelope $message, string $queueName, int $flags = \AMQP_NOPARAM): bool
     {
-        return $this->queue($queueName)->nack($message->getDeliveryTag(), $flags) ?? true;
+        try {
+            return $this->queue($queueName)->nack($message->getDeliveryTag(), $flags) ?? true;
+        } finally {
+            $this->lastActivityTime = time();
+            $this->inFlightMessages = max(0, $this->inFlightMessages - 1);
+        }
     }
 
     public function setup(): void
@@ -458,6 +497,15 @@ class Connection
         $exchange = $this->exchange();
         if ('' !== $this->exchangeOptions['name']) {
             $exchange->declareExchange();
+        }
+
+        foreach ($this->exchangeOptions['bindings'] ?? [] as $exchangeName => $exchangeConfig) {
+            if (!\is_array($exchangeConfig['binding_keys'] ?? false) || !$exchangeConfig['binding_keys']) {
+                throw new InvalidArgumentException(\sprintf('The "binding_keys" option must be set to a non-empty array for exchange "%s".', $exchangeName));
+            }
+            foreach ($exchangeConfig['binding_keys'] as $bindingKey) {
+                $this->exchange()->bind($exchangeName, $bindingKey, $exchangeConfig['binding_arguments'] ?? []);
+            }
         }
 
         foreach ($this->queuesOptions as $queueName => $queueConfig) {
@@ -507,7 +555,7 @@ class Connection
             }
 
             $this->lastActivityTime = time();
-        } elseif (0 < ($this->connectionOptions['heartbeat'] ?? 0) && time() > $this->lastActivityTime + 2 * $this->connectionOptions['heartbeat']) {
+        } elseif (0 < ($this->connectionOptions['heartbeat'] ?? 0) && time() > $this->lastActivityTime + 2 * $this->connectionOptions['heartbeat'] && 0 === $this->inFlightMessages) {
             $disconnectMethod = 'true' === ($this->connectionOptions['persistent'] ?? 'false') ? 'pdisconnect' : 'disconnect';
             $this->amqpChannel->getConnection()->{$disconnectMethod}();
         }
@@ -564,6 +612,7 @@ class Connection
     {
         unset($this->amqpChannel, $this->amqpExchange, $this->amqpDelayExchange);
         $this->amqpQueues = [];
+        $this->inFlightMessages = 0;
     }
 
     private function getDefaultPublishRoutingKey(): ?string
@@ -583,6 +632,9 @@ class Connection
         return $amqpStamp?->getRoutingKey() ?? $this->getDefaultPublishRoutingKey();
     }
 
+    /**
+     * @param-immediately-invoked-callable $callable
+     */
     private function withConnectionExceptionRetry(callable $callable): void
     {
         $maxRetries = 3;

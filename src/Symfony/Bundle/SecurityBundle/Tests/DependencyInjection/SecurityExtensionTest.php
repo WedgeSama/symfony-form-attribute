@@ -11,12 +11,14 @@
 
 namespace Symfony\Bundle\SecurityBundle\Tests\DependencyInjection;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory\AuthenticatorFactoryInterface;
 use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory\FirewallListenerFactoryInterface;
 use Symfony\Bundle\SecurityBundle\DependencyInjection\SecurityExtension;
 use Symfony\Bundle\SecurityBundle\SecurityBundle;
-use Symfony\Bundle\SecurityBundle\Tests\DependencyInjection\Fixtures\UserProvider\DummyProvider;
+use Symfony\Bundle\SecurityBundle\Tests\DependencyInjection\Fixtures\UserProviderFactory\CustomProviderFactory;
+use Symfony\Bundle\SecurityBundle\Tests\DependencyInjection\Fixtures\UserProviderFactory\DummyProviderFactory;
 use Symfony\Component\Config\Definition\Builder\NodeDefinition;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\Argument\IteratorArgument;
@@ -29,6 +31,7 @@ use Symfony\Component\ExpressionLanguage\Expression;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestMatcher\PathRequestMatcher;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\PasswordHasher\PasswordHasherInterface;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\User\InMemoryUserChecker;
@@ -66,16 +69,50 @@ class SecurityExtensionTest extends TestCase
         $container->compile();
     }
 
+    public function testFirewallWithCustomUserProvider()
+    {
+        $container = $this->getRawContainer();
+
+        $extension = $container->getExtension('security');
+        $extension->addUserProviderFactory(new CustomProviderFactory());
+
+        $container->loadFromExtension('security', [
+            'providers' => [
+                'my_app_provider' => [
+                    'custom' => [
+                        'foo' => 'baz',
+                    ],
+                ],
+            ],
+
+            'firewalls' => [
+                'some_firewall' => [
+                    'pattern' => '/.*',
+                    'http_basic' => [],
+                ],
+            ],
+        ]);
+
+        $container->compile();
+
+        $this->assertTrue($container->hasDefinition('security.user.provider.concrete.my_app_provider'));
+        $this->assertEquals('baz', $container->getDefinition('security.user.provider.concrete.my_app_provider')->getArgument('$foo'));
+    }
+
     public function testFirewallWithInvalidUserProvider()
     {
         $container = $this->getRawContainer();
 
         $extension = $container->getExtension('security');
-        $extension->addUserProviderFactory(new DummyProvider());
+        $extension->addUserProviderFactory(new CustomProviderFactory());
 
         $container->loadFromExtension('security', [
             'providers' => [
-                'my_foo' => ['foo' => []],
+                'my_app_provider' => [
+                    'some_other' => [
+                        'bar' => 'baz',
+                    ],
+                ],
             ],
 
             'firewalls' => [
@@ -87,9 +124,72 @@ class SecurityExtensionTest extends TestCase
         ]);
 
         $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('Unable to create definition for "security.user.provider.concrete.my_foo" user provider');
+        $this->expectExceptionMessage('Unrecognized option "some_other" under "security.providers.my_app_provider". Available options are "chain", "custom", "id", "ldap", "memory".');
 
         $container->compile();
+    }
+
+    public function testFirewallWithInvalidUserProviderConfig()
+    {
+        $container = $this->getRawContainer();
+
+        $extension = $container->getExtension('security');
+        $extension->addUserProviderFactory(new CustomProviderFactory());
+
+        $container->loadFromExtension('security', [
+            'providers' => [
+                'my_app_provider' => [
+                    'custom' => [
+                        'bar' => 'baz',
+                    ],
+                ],
+            ],
+
+            'firewalls' => [
+                'some_firewall' => [
+                    'pattern' => '/.*',
+                    'http_basic' => [],
+                ],
+            ],
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Unrecognized option "bar" under "security.providers.my_app_provider.custom". Available option is "foo".');
+
+        $container->compile();
+    }
+
+    public function testFirewallWithUserProviderWithoutConfig()
+    {
+        $container = $this->getRawContainer();
+
+        $extension = $container->getExtension('security');
+        $extension->addUserProviderFactory(new DummyProviderFactory());
+
+        $container->loadFromExtension('security', [
+            'providers' => [
+                'my_app_provider' => [
+                    'foo' => null,
+                ],
+                'my_other_app_provider' => [
+                    'foo' => [],
+                ],
+            ],
+
+            'firewalls' => [
+                'some_firewall' => [
+                    'pattern' => '/.*',
+                    'http_basic' => [
+                        'provider' => 'my_app_provider',
+                    ],
+                ],
+            ],
+        ]);
+
+        $container->compile();
+
+        $this->assertTrue($container->hasDefinition('security.user.provider.concrete.my_app_provider'));
+        $this->assertTrue($container->hasDefinition('security.user.provider.concrete.my_other_app_provider'));
     }
 
     public function testDisableRoleHierarchyVoter()
@@ -137,6 +237,24 @@ class SecurityExtensionTest extends TestCase
         $container->compile();
 
         $this->assertTrue($container->getDefinition('security.authentication.switchuser_listener.some_firewall')->getArgument(9));
+    }
+
+    public function testRoleHierarchyDumpCommandIsRegisteredWithRoleHierarchy()
+    {
+        $container = $this->getRawContainer();
+        $container->loadFromExtension('security', [
+            'role_hierarchy' => [
+                'ROLE_ADMIN' => ['ROLE_USER'],
+                'ROLE_SUPER_ADMIN' => ['ROLE_ADMIN', 'ROLE_ALLOWED_TO_SWITCH'],
+            ],
+            'firewalls' => [
+                'some_firewall' => [
+                ],
+            ],
+        ]);
+        $container->compile();
+
+        $this->assertTrue($container->hasDefinition('security.command.role_hierarchy_dump'));
     }
 
     public function testPerListenerProvider()
@@ -277,7 +395,7 @@ class SecurityExtensionTest extends TestCase
         $this->assertSame($requestMatcherId, (string) $args[0]);
     }
 
-    /** @dataProvider provideAdditionalRequestMatcherConstraints */
+    #[DataProvider('provideAdditionalRequestMatcherConstraints')]
     public function testRegisterAccessControlWithRequestMatcherAndAdditionalOptionsThrowsInvalidException(array $additionalConstraints)
     {
         $container = $this->getRawContainer();
@@ -476,9 +594,7 @@ class SecurityExtensionTest extends TestCase
         $this->assertFalse($container->has(UserProviderInterface::class));
     }
 
-    /**
-     * @dataProvider acceptableIpsProvider
-     */
+    #[DataProvider('acceptableIpsProvider')]
     public function testAcceptableAccessControlIps($ips)
     {
         $container = $this->getRawContainer();
@@ -663,9 +779,7 @@ class SecurityExtensionTest extends TestCase
         ], 'security.authenticator.guard.main.0'];
     }
 
-    /**
-     * @dataProvider provideEntryPointRequiredData
-     */
+    #[DataProvider('provideEntryPointRequiredData')]
     public function testEntryPointRequired(array $firewall, string $messageRegex)
     {
         $container = $this->getRawContainer();
@@ -694,9 +808,7 @@ class SecurityExtensionTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider provideConfigureCustomAuthenticatorData
-     */
+    #[DataProvider('provideConfigureCustomAuthenticatorData')]
     public function testConfigureCustomAuthenticator(array $firewall, array $expectedAuthenticators)
     {
         $container = $this->getRawContainer();
@@ -769,9 +881,7 @@ class SecurityExtensionTest extends TestCase
         $this->assertTrue($container->has('security.listener.session.'.$firewallId));
     }
 
-    /**
-     * @dataProvider provideUserCheckerConfig
-     */
+    #[DataProvider('provideUserCheckerConfig')]
     public function testUserCheckerWithAuthenticatorManager(array $config, string $expectedUserCheckerClass)
     {
         $container = $this->getRawContainer();
@@ -883,7 +993,7 @@ class SecurityExtensionTest extends TestCase
         $container->loadFromExtension('security', [
             'password_hashers' => [
                 'legacy' => 'md5',
-                'App\User' => [
+                TestUserChecker::class => [
                     'id' => 'App\Security\CustomHasher',
                     'migrate_from' => 'legacy',
                 ],
@@ -895,11 +1005,19 @@ class SecurityExtensionTest extends TestCase
 
         $hashersMap = $container->getDefinition('security.password_hasher_factory')->getArgument(0);
 
-        $this->assertArrayHasKey('App\User', $hashersMap);
-        $this->assertEquals($hashersMap['App\User'], [
+        $this->assertArrayHasKey(TestUserChecker::class, $hashersMap);
+        $this->assertEquals($hashersMap[TestUserChecker::class], [
             'instance' => new Reference('App\Security\CustomHasher'),
             'migrate_from' => ['legacy'],
         ]);
+
+        $legacyAlias = \sprintf('%s $%s', PasswordHasherInterface::class, 'legacy');
+        $this->assertTrue($container->hasAlias($legacyAlias));
+        $definition = $container->getDefinition((string) $container->getAlias($legacyAlias));
+        $this->assertSame(PasswordHasherInterface::class, $definition->getClass());
+
+        $this->assertFalse($container->hasAlias(\sprintf('%s $%s', PasswordHasherInterface::class, 'symfonyBundleSecurityBundleTestsDependencyInjectionTestUserChecker')));
+        $this->assertFalse($container->hasAlias(\sprintf('.%s $%s', PasswordHasherInterface::class, TestUserChecker::class)));
     }
 
     public function testAuthenticatorsDecoration()
@@ -986,7 +1104,7 @@ class TestUserChecker implements UserCheckerInterface
     {
     }
 
-    public function checkPostAuth(UserInterface $user): void
+    public function checkPostAuth(UserInterface $user, ?TokenInterface $token = null): void
     {
     }
 }

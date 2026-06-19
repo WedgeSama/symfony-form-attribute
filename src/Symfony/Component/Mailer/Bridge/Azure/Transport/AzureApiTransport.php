@@ -93,7 +93,7 @@ final class AzureApiTransport extends AbstractApiTransport
      */
     private function getPayload(Email $email, Envelope $envelope): array
     {
-        $addressStringifier = function (Address $address) {
+        $addressStringifier = static function (Address $address) {
             $stringified = ['address' => $address->getAddress()];
 
             if ($address->getName()) {
@@ -153,7 +153,7 @@ final class AzureApiTransport extends AbstractApiTransport
             ];
 
             if ('inline' === $disposition) {
-                $att['content_id'] = $filename;
+                $att['contentId'] = $attachment->getContentId();
             }
 
             $attachments[] = $att;

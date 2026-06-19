@@ -11,6 +11,7 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Tests\Routing;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
 use Symfony\Bundle\FrameworkBundle\Routing\Router;
@@ -35,7 +36,7 @@ class RouterTest extends TestCase
     {
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('You should either pass a "Symfony\Component\DependencyInjection\ContainerInterface" instance or provide the $parameters argument of the "Symfony\Bundle\FrameworkBundle\Routing\Router::__construct" method');
-        new Router($this->createMock(ContainerInterface::class), 'foo');
+        new Router($this->createStub(ContainerInterface::class), 'foo');
     }
 
     public function testGenerateWithServiceParam()
@@ -343,6 +344,23 @@ class RouterTest extends TestCase
         $router->getRouteCollection();
     }
 
+    public function testEnvPlaceholderInResolvedValue()
+    {
+        $routes = new RouteCollection();
+
+        $route = new Route('foo');
+        $route->setHost('%route.host%');
+        $routes->add('foo', $route);
+
+        $router = new Router($container = $this->getServiceContainer($routes), 'foo');
+        $container->setParameter('route.host', 'env_abcdef1234567890_APP_HOST_abcdef1234567890abcdef1234567890');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('The container parameter "route.host" resolves to an env var, which is not allowed in routing configuration.');
+
+        $router->getRouteCollection();
+    }
+
     public function testHostPlaceholders()
     {
         $routes = new RouteCollection();
@@ -438,9 +456,7 @@ class RouterTest extends TestCase
         $router->getRouteCollection();
     }
 
-    /**
-     * @dataProvider getNonStringValues
-     */
+    #[DataProvider('getNonStringValues')]
     public function testDefaultValuesAsNonStrings($value)
     {
         $routes = new RouteCollection();
@@ -455,9 +471,7 @@ class RouterTest extends TestCase
         $this->assertSame($value, $route->getDefault('foo'));
     }
 
-    /**
-     * @dataProvider getNonStringValues
-     */
+    #[DataProvider('getNonStringValues')]
     public function testDefaultValuesAsNonStringsWithSfContainer($value)
     {
         $routes = new RouteCollection();
@@ -525,9 +539,7 @@ class RouterTest extends TestCase
         return [[null], [false], [true], [new \stdClass()], [['foo', 'bar']], [[[]]]];
     }
 
-    /**
-     * @dataProvider getContainerParameterForRoute
-     */
+    #[DataProvider('getContainerParameterForRoute')]
     public function testCacheValidityWithContainerParameters($parameter)
     {
         $cacheDir = tempnam(sys_get_temp_dir(), 'sf_router_');
@@ -612,10 +624,9 @@ class RouterTest extends TestCase
 
     private function getServiceContainer(RouteCollection $routes): Container
     {
-        $loader = $this->createMock(LoaderInterface::class);
+        $loader = $this->createStub(LoaderInterface::class);
 
         $loader
-            ->expects($this->any())
             ->method('load')
             ->willReturn($routes)
         ;
@@ -628,10 +639,9 @@ class RouterTest extends TestCase
 
     private function getPsr11ServiceContainer(RouteCollection $routes): ContainerInterface
     {
-        $loader = $this->createMock(LoaderInterface::class);
+        $loader = $this->createStub(LoaderInterface::class);
 
         $loader
-            ->expects($this->any())
             ->method('load')
             ->willReturn($routes)
         ;

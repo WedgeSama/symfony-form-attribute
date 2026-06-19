@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints\DivisibleBy;
 use Symfony\Component\Validator\Constraints\DivisibleByValidator;
@@ -90,15 +91,13 @@ class DivisibleByValidatorTest extends AbstractComparisonValidatorTestCase
         ];
     }
 
-    /**
-     * @dataProvider throwsOnNonNumericValuesProvider
-     */
+    #[DataProvider('throwsOnNonNumericValuesProvider')]
     public function testThrowsOnNonNumericValues(string $expectedGivenType, $value, $comparedValue)
     {
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessage(\sprintf('Expected argument of type "numeric", "%s" given', $expectedGivenType));
 
-        $this->validator->validate($value, $this->createConstraint([
+        $this->validate($value, $this->createConstraint([
             'value' => $comparedValue,
         ]));
     }

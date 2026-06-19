@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\RateLimiter\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Symfony\Bridge\PhpUnit\ClockMock;
 use Symfony\Component\OptionsResolver\Exception\MissingOptionsException;
@@ -23,9 +25,7 @@ use Symfony\Component\RateLimiter\Storage\InMemoryStorage;
 
 class RateLimiterFactoryTest extends TestCase
 {
-    /**
-     * @dataProvider validConfigProvider
-     */
+    #[DataProvider('validConfigProvider')]
     public function testValidConfig(string $expectedClass, array $config)
     {
         $factory = new RateLimiterFactory($config, new InMemoryStorage());
@@ -49,6 +49,13 @@ class RateLimiterFactoryTest extends TestCase
             'limit' => 5,
             'interval' => '5 seconds',
         ]];
+        yield [FixedWindowLimiter::class, [
+            'policy' => 'fixed_window',
+            'id' => 'test',
+            'limit' => 10,
+            'interval' => '1 month',
+            'anchor_at' => '2024-01-05 00:00:00 UTC',
+        ]];
         yield [SlidingWindowLimiter::class, [
             'policy' => 'sliding_window',
             'id' => 'test',
@@ -61,9 +68,7 @@ class RateLimiterFactoryTest extends TestCase
         ]];
     }
 
-    /**
-     * @dataProvider invalidConfigProvider
-     */
+    #[DataProvider('invalidConfigProvider')]
     public function testInvalidConfig(string $exceptionClass, array $config)
     {
         $this->expectException($exceptionClass);
@@ -78,9 +83,68 @@ class RateLimiterFactoryTest extends TestCase
         ]];
     }
 
-    /**
-     * @group time-sensitive
-     */
+    public function testAnchorAtUnparseableStringThrowsInvalidArgumentException()
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Cannot parse "anchor_at" value "not a date".');
+
+        new RateLimiterFactory([
+            'policy' => 'fixed_window',
+            'id' => 'test',
+            'limit' => 5,
+            'interval' => '1 month',
+            'anchor_at' => 'not a date',
+        ], new InMemoryStorage());
+    }
+
+    public function testAnchorAtTimezoneLessStringDefaultsToUtc()
+    {
+        $originalTimezone = date_default_timezone_get();
+        try {
+            // A non-UTC default timezone would shift the anchor's UTC timestamp if it leaked through
+            date_default_timezone_set('Asia/Tokyo');
+
+            $factoryUtc = new RateLimiterFactory([
+                'policy' => 'fixed_window',
+                'id' => 'test',
+                'limit' => 5,
+                'interval' => '1 month',
+                'anchor_at' => '2024-01-05 00:00:00',
+            ], new InMemoryStorage());
+
+            $factoryExplicit = new RateLimiterFactory([
+                'policy' => 'fixed_window',
+                'id' => 'test',
+                'limit' => 5,
+                'interval' => '1 month',
+                'anchor_at' => '2024-01-05 00:00:00 UTC',
+            ], new InMemoryStorage());
+
+            $reflection = new \ReflectionProperty(RateLimiterFactory::class, 'config');
+            $this->assertSame(
+                $reflection->getValue($factoryExplicit)['anchor_at']->getTimestamp(),
+                $reflection->getValue($factoryUtc)['anchor_at']->getTimestamp(),
+            );
+        } finally {
+            date_default_timezone_set($originalTimezone);
+        }
+    }
+
+    public function testAnchorAtRejectedOnNonFixedWindow()
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('The "anchor_at" option is only supported with the "fixed_window" policy.');
+
+        new RateLimiterFactory([
+            'policy' => 'sliding_window',
+            'id' => 'test',
+            'limit' => 5,
+            'interval' => '5 seconds',
+            'anchor_at' => '2024-01-05 00:00:00 UTC',
+        ], new InMemoryStorage());
+    }
+
+    #[Group('time-sensitive')]
     public function testExpirationTimeCalculationWhenUsingDefaultTimezoneRomeWithIntervalAfterCETChange()
     {
         $originalTimezone = date_default_timezone_get();

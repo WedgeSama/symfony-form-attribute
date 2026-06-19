@@ -100,8 +100,7 @@ class ChoiceType extends AbstractType
         if ($options['expanded'] || $options['multiple']) {
             // Make sure that scalar, submitted values are converted to arrays
             // which can be submitted to the checkboxes/radio buttons
-            $builder->addEventListener(FormEvents::PRE_SUBMIT, static function (FormEvent $event) use ($choiceList, $options, &$unknownValues) {
-                /** @var PreSubmitEvent $event */
+            $builder->addEventListener(FormEvents::PRE_SUBMIT, static function (PreSubmitEvent $event) use ($choiceList, $options, &$unknownValues) {
                 $form = $event->getForm();
                 $data = $event->getData();
 
@@ -124,7 +123,8 @@ class ChoiceType extends AbstractType
                 }
 
                 // A map from submitted values to integers
-                $valueMap = array_flip($data);
+                // `null` entries are produced by MissingDataHandler for unchecked checkbox children
+                $valueMap = array_flip(array_filter($data, static fn ($v) => null !== $v));
 
                 // Make a copy of the value map to determine whether any unknown
                 // values were submitted
@@ -349,6 +349,8 @@ class ChoiceType extends AbstractType
             return new LazyChoiceLoader($choiceLoader);
         };
 
+        $placeholderAttr = static fn (Options $options) => $options['required'] ? ['hidden' => true] : [];
+
         $resolver->setDefaults([
             'multiple' => false,
             'expanded' => false,
@@ -368,7 +370,7 @@ class ChoiceType extends AbstractType
             'group_by' => null,
             'empty_data' => $emptyData,
             'placeholder' => $placeholderDefault,
-            'placeholder_attr' => [],
+            'placeholder_attr' => $placeholderAttr,
             'error_bubbling' => false,
             'compound' => $compound,
             // The view data is always a string or an array of strings,
@@ -438,7 +440,7 @@ class ChoiceType extends AbstractType
             'label_html' => $options['label_html'],
             'attr' => $choiceView->attr,
             'label_translation_parameters' => $choiceView->labelTranslationParameters,
-            'translation_domain' => $options['choice_translation_domain'],
+            'translation_domain' => 'placeholder' === $name ? $options['translation_domain'] : $options['choice_translation_domain'],
             'block_name' => 'entry',
         ];
 

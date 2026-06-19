@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\Validator\Constraints\File;
 use Symfony\Component\Validator\Constraints\FileValidator;
@@ -54,14 +55,14 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
     public function testNullIsValid()
     {
-        $this->validator->validate(null, new File());
+        $this->validate(null, new File());
 
         $this->assertNoViolation();
     }
 
     public function testEmptyStringIsValid()
     {
-        $this->validator->validate('', new File());
+        $this->validate('', new File());
 
         $this->assertNoViolation();
     }
@@ -69,12 +70,12 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
     public function testExpectsStringCompatibleTypeOrFile()
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->validator->validate(new \stdClass(), new File());
+        $this->validate(new \stdClass(), new File());
     }
 
     public function testValidFile()
     {
-        $this->validator->validate($this->path, new File());
+        $this->validate($this->path, new File());
 
         $this->assertNoViolation();
     }
@@ -83,7 +84,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
     {
         file_put_contents($this->path, '1');
         $file = new UploadedFile($this->path, 'originalName', null, null, true);
-        $this->validator->validate($file, new File());
+        $this->validate($file, new File());
 
         $this->assertNoViolation();
     }
@@ -159,9 +160,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
         ];
     }
 
-    /**
-     * @dataProvider provideMaxSizeExceededTests
-     */
+    #[DataProvider('provideMaxSizeExceededTests')]
     public function testMaxSizeExceeded($bytesWritten, $limit, $sizeAsString, $limitAsString, $suffix)
     {
         fseek($this->file, $bytesWritten - 1, \SEEK_SET);
@@ -173,7 +172,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
             maxSizeMessage: 'myMessage',
         );
 
-        $this->validator->validate($this->getFile($this->path), $constraint);
+        $this->validate($this->getFile($this->path), $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ limit }}', $limitAsString)
@@ -211,9 +210,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
         ];
     }
 
-    /**
-     * @dataProvider provideMaxSizeNotExceededTests
-     */
+    #[DataProvider('provideMaxSizeNotExceededTests')]
     public function testMaxSizeNotExceeded($bytesWritten, $limit)
     {
         fseek($this->file, $bytesWritten - 1, \SEEK_SET);
@@ -225,7 +222,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
             maxSizeMessage: 'myMessage',
         );
 
-        $this->validator->validate($this->getFile($this->path), $constraint);
+        $this->validate($this->getFile($this->path), $constraint);
 
         $this->assertNoViolation();
     }
@@ -258,9 +255,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
         ];
     }
 
-    /**
-     * @dataProvider provideBinaryFormatTests
-     */
+    #[DataProvider('provideBinaryFormatTests')]
     public function testBinaryFormat($bytesWritten, $limit, $binaryFormat, $sizeAsString, $limitAsString, $suffix)
     {
         fseek($this->file, $bytesWritten - 1, \SEEK_SET);
@@ -273,7 +268,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
             maxSizeMessage: 'myMessage',
         );
 
-        $this->validator->validate($this->getFile($this->path), $constraint);
+        $this->validate($this->getFile($this->path), $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ limit }}', $limitAsString)
@@ -293,7 +288,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
         $constraint = new File(maxSize: 10, binaryFormat: true, maxSizeMessage: 'myMessage');
 
-        $this->validator->validate($this->getFile($this->path), $constraint);
+        $this->validate($this->getFile($this->path), $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ limit }}', '10')
@@ -322,7 +317,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
         $constraint = new File(mimeTypes: ['image/png', 'image/jpg']);
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->assertNoViolation();
     }
@@ -344,7 +339,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
         $constraint = new File(mimeTypes: ['image/*']);
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->assertNoViolation();
     }
@@ -364,39 +359,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
             ->method('getMimeType')
             ->willReturn('application/pdf');
 
-        $this->validator->validate($file, new File(mimeTypes: ['image/png', 'image/jpg'], mimeTypesMessage: 'myMessage'));
-
-        $this->buildViolation('myMessage')
-            ->setParameter('{{ type }}', '"application/pdf"')
-            ->setParameter('{{ types }}', '"image/png", "image/jpg"')
-            ->setParameter('{{ file }}', '"'.$this->path.'"')
-            ->setParameter('{{ name }}', '"'.basename($this->path).'"')
-            ->setCode(File::INVALID_MIME_TYPE_ERROR)
-            ->assertRaised();
-    }
-
-    /**
-     * @group legacy
-     */
-    public function testInvalidMimeTypeDoctrineStyle()
-    {
-        $file = $this
-            ->getMockBuilder(\Symfony\Component\HttpFoundation\File\File::class)
-            ->setConstructorArgs([__DIR__.'/Fixtures/foo'])
-            ->getMock();
-        $file
-            ->expects($this->once())
-            ->method('getPathname')
-            ->willReturn($this->path);
-        $file
-            ->expects($this->once())
-            ->method('getMimeType')
-            ->willReturn('application/pdf');
-
-        $this->validator->validate($file, new File([
-            'mimeTypes' => ['image/png', 'image/jpg'],
-            'mimeTypesMessage' => 'myMessage',
-        ]));
+        $this->validate($file, new File(mimeTypes: ['image/png', 'image/jpg'], mimeTypesMessage: 'myMessage'));
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ type }}', '"application/pdf"')
@@ -427,7 +390,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
             mimeTypesMessage: 'myMessage',
         );
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ type }}', '"application/pdf"')
@@ -442,7 +405,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
     {
         ftruncate($this->file, 0);
 
-        $this->validator->validate($this->getFile($this->path), new File(disallowEmptyMessage: 'myMessage'));
+        $this->validate($this->getFile($this->path), new File(disallowEmptyMessage: 'myMessage'));
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ file }}', '"'.$this->path.'"')
@@ -451,27 +414,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @group legacy
-     */
-    public function testDisallowEmptyDoctrineStyle()
-    {
-        ftruncate($this->file, 0);
-
-        $this->validator->validate($this->getFile($this->path), new File([
-            'disallowEmptyMessage' => 'myMessage',
-        ]));
-
-        $this->buildViolation('myMessage')
-            ->setParameter('{{ file }}', '"'.$this->path.'"')
-            ->setParameter('{{ name }}', '"'.basename($this->path).'"')
-            ->setCode(File::EMPTY_ERROR)
-            ->assertRaised();
-    }
-
-    /**
-     * @dataProvider uploadedFileErrorProvider
-     */
+    #[DataProvider('uploadedFileErrorProvider')]
     public function testUploadedFileError($error, $message, array $params = [], $maxSize = null)
     {
         $file = new UploadedFile(tempnam(sys_get_temp_dir(), 'file-validator-test-'), 'originalName', 'mime', $error);
@@ -481,7 +424,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
             'maxSize' => $maxSize,
         ]);
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameters($params)
@@ -500,36 +443,34 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
             [(string) \UPLOAD_ERR_EXTENSION, 'uploadExtensionErrorMessage'],
         ];
 
-        if (class_exists(UploadedFile::class)) {
-            // when no maxSize is specified on constraint, it should use the ini value
-            $tests[] = [(string) \UPLOAD_ERR_INI_SIZE, 'uploadIniSizeErrorMessage', [
-                '{{ limit }}' => UploadedFile::getMaxFilesize() / 1048576,
-                '{{ suffix }}' => 'MiB',
-            ]];
+        // when no maxSize is specified on constraint, it should use the ini value
+        $tests[] = [(string) \UPLOAD_ERR_INI_SIZE, 'uploadIniSizeErrorMessage', [
+            '{{ limit }}' => UploadedFile::getMaxFilesize() / 1048576,
+            '{{ suffix }}' => 'MiB',
+        ]];
 
-            // it should use the smaller limitation (maxSize option in this case)
-            $tests[] = [(string) \UPLOAD_ERR_INI_SIZE, 'uploadIniSizeErrorMessage', [
-                '{{ limit }}' => 1,
-                '{{ suffix }}' => 'bytes',
-            ], '1'];
+        // it should use the smaller limitation (maxSize option in this case)
+        $tests[] = [(string) \UPLOAD_ERR_INI_SIZE, 'uploadIniSizeErrorMessage', [
+            '{{ limit }}' => 1,
+            '{{ suffix }}' => 'bytes',
+        ], '1'];
 
-            // access FileValidator::factorizeSizes() private method to format max file size
-            $reflection = new \ReflectionClass(new FileValidator());
-            $method = $reflection->getMethod('factorizeSizes');
-            [, $limit, $suffix] = $method->invokeArgs(new FileValidator(), [0, UploadedFile::getMaxFilesize(), false]);
+        // access FileValidator::factorizeSizes() private method to format max file size
+        $reflection = new \ReflectionClass(new FileValidator());
+        $method = $reflection->getMethod('factorizeSizes');
+        [, $limit, $suffix] = $method->invokeArgs(new FileValidator(), [0, UploadedFile::getMaxFilesize(), false]);
 
-            // it correctly parses the maxSize option and not only uses simple string comparison
-            // 1000G should be bigger than the ini value
-            $tests[] = [(string) \UPLOAD_ERR_INI_SIZE, 'uploadIniSizeErrorMessage', [
-                '{{ limit }}' => $limit,
-                '{{ suffix }}' => $suffix,
-            ], '1000G'];
+        // it correctly parses the maxSize option and not only uses simple string comparison
+        // 1000G should be bigger than the ini value
+        $tests[] = [(string) \UPLOAD_ERR_INI_SIZE, 'uploadIniSizeErrorMessage', [
+            '{{ limit }}' => $limit,
+            '{{ suffix }}' => $suffix,
+        ], '1000G'];
 
-            $tests[] = [(string) \UPLOAD_ERR_INI_SIZE, 'uploadIniSizeErrorMessage', [
-                '{{ limit }}' => '100',
-                '{{ suffix }}' => 'kB',
-            ], '100K'];
-        }
+        $tests[] = [(string) \UPLOAD_ERR_INI_SIZE, 'uploadIniSizeErrorMessage', [
+            '{{ limit }}' => '100',
+            '{{ suffix }}' => 'kB',
+        ], '100K'];
 
         return $tests;
     }
@@ -544,9 +485,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
         $file->maxSize = -1;
     }
 
-    /**
-     * @dataProvider providerValidExtension
-     */
+    #[DataProvider('providerValidExtension')]
     public function testExtensionValid(string $name)
     {
         $path = __DIR__.'/Fixtures/'.$name;
@@ -560,7 +499,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
         $constraint = new File(mimeTypes: [], extensions: ['gif', 'txt'], extensionsMessage: 'myMessage');
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->assertNoViolation();
     }
@@ -573,9 +512,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
         yield ['uppercased-extension.TXT'];
     }
 
-    /**
-     * @dataProvider provideInvalidExtension
-     */
+    #[DataProvider('provideInvalidExtension')]
     public function testExtensionInvalid(string $name, string $extension)
     {
         $path = __DIR__.'/Fixtures/'.$name;
@@ -583,7 +520,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
         $constraint = new File(extensions: ['png', 'svg'], extensionsMessage: 'myMessage');
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameters([
@@ -616,7 +553,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
         $constraint = new File(mimeTypesMessage: 'myMessage', extensions: ['gif']);
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameters([
@@ -642,7 +579,7 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
         $constraint = new File(mimeTypesMessage: 'myMessage', extensions: ['gif', 'txt']);
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameters([
@@ -667,20 +604,18 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
 
         $constraint = new File(mimeTypesMessage: 'myMessage', extensions: ['txt']);
 
-        $this->validator->validate($file, $constraint);
+        $this->validate($file, $constraint);
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @dataProvider provideFilenameMaxLengthIsTooLong
-     */
+    #[DataProvider('provideFilenameMaxLengthIsTooLong')]
     public function testFilenameMaxLengthIsTooLong(File $constraintFile, string $filename, string $messageViolation)
     {
         file_put_contents($this->path, '1');
 
         $file = new UploadedFile($this->path, $filename, null, null, true);
-        $this->validator->validate($file, $constraintFile);
+        $this->validate($file, $constraintFile);
 
         $this->buildViolation($messageViolation)
             ->setParameters([
@@ -718,28 +653,24 @@ abstract class FileValidatorTestCase extends ConstraintValidatorTestCase
         ];
     }
 
-    /**
-     * @dataProvider provideFilenameCountUnit
-     */
+    #[DataProvider('provideFilenameCountUnit')]
     public function testValidCountUnitFilenameMaxLength(int $maxLength, string $countUnit)
     {
         file_put_contents($this->path, '1');
 
         $file = new UploadedFile($this->path, "A\u{0300}", null, null, true);
-        $this->validator->validate($file, new File(filenameMaxLength: $maxLength, filenameCountUnit: $countUnit));
+        $this->validate($file, new File(filenameMaxLength: $maxLength, filenameCountUnit: $countUnit));
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @dataProvider provideFilenameCharset
-     */
+    #[DataProvider('provideFilenameCharset')]
     public function testFilenameCharset(string $filename, string $charset, bool $isValid)
     {
         file_put_contents($this->path, '1');
 
         $file = new UploadedFile($this->path, $filename, null, null, true);
-        $this->validator->validate($file, new File(filenameCharset: $charset, filenameCharsetMessage: 'myMessage'));
+        $this->validate($file, new File(filenameCharset: $charset, filenameCharsetMessage: 'myMessage'));
 
         if ($isValid) {
             $this->assertNoViolation();

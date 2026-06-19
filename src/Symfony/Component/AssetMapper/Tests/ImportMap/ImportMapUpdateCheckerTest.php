@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\AssetMapper\Tests\ImportMap;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\AssetMapper\ImportMap\ImportMapConfigReader;
 use Symfony\Component\AssetMapper\ImportMap\ImportMapEntries;
@@ -29,7 +30,7 @@ class ImportMapUpdateCheckerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->importMapConfigReader = $this->createMock(ImportMapConfigReader::class);
+        $this->importMapConfigReader = $this->createStub(ImportMapConfigReader::class);
         $httpClient = new MockHttpClient();
         $httpClient->setResponseFactory(self::responseFactory(...));
         $this->updateChecker = new ImportMapUpdateChecker($this->importMapConfigReader, $httpClient);
@@ -77,52 +78,51 @@ class ImportMapUpdateCheckerTest extends TestCase
 
         $this->assertEquals([
             '@hotwired/stimulus' => new PackageUpdateInfo(
-                packageName: '@hotwired/stimulus',
-                currentVersion: '3.2.1',
-                latestVersion: '4.0.1',
-                updateType: 'major'
+                '@hotwired/stimulus',
+                '3.2.1',
+                '4.0.1',
+                'major'
             ),
             'json5' => new PackageUpdateInfo(
-                packageName: 'json5',
-                currentVersion: '1.0.0',
-                latestVersion: '1.2.0',
-                updateType: 'minor'
+                'json5',
+                '1.0.0',
+                '1.2.0',
+                'minor'
             ),
             'bootstrap' => new PackageUpdateInfo(
-                packageName: 'bootstrap',
-                currentVersion: '5.3.1',
-                latestVersion: '5.3.2',
-                updateType: 'patch'
+                'bootstrap',
+                '5.3.1',
+                '5.3.2',
+                'patch'
             ),
             'bootstrap/dist/css/bootstrap.min.css' => new PackageUpdateInfo(
-                packageName: 'bootstrap',
-                currentVersion: '5.3.1',
-                latestVersion: '5.3.2',
-                updateType: 'patch'
+                'bootstrap',
+                '5.3.1',
+                '5.3.2',
+                'patch'
             ),
             'lodash' => new PackageUpdateInfo(
-                packageName: 'lodash',
-                currentVersion: '4.17.21',
-                latestVersion: '4.17.21',
-                updateType: 'up-to-date'
+                'lodash',
+                '4.17.21',
+                '4.17.21',
+                'up-to-date'
             ),
         ], $updates);
     }
 
     /**
-     * @dataProvider provideImportMapEntry
-     *
      * @param ImportMapEntry[]    $entries
      * @param PackageUpdateInfo[] $expectedUpdateInfo
      */
+    #[DataProvider('provideImportMapEntry')]
     public function testGetAvailableUpdatesForSinglePackage(array $entries, array $expectedUpdateInfo, ?\Exception $expectedException)
     {
         $this->importMapConfigReader->method('getEntries')->willReturn(new ImportMapEntries($entries));
         if (null !== $expectedException) {
             $this->expectException($expectedException::class);
-            $this->updateChecker->getAvailableUpdates(array_map(fn ($entry) => $entry->importName, $entries));
+            $this->updateChecker->getAvailableUpdates(array_map(static fn ($entry) => $entry->importName, $entries));
         } else {
-            $update = $this->updateChecker->getAvailableUpdates(array_map(fn ($entry) => $entry->importName, $entries));
+            $update = $this->updateChecker->getAvailableUpdates(array_map(static fn ($entry) => $entry->importName, $entries));
             $this->assertEquals($expectedUpdateInfo, $update);
         }
     }
@@ -137,10 +137,10 @@ class ImportMapUpdateCheckerTest extends TestCase
             ),
             ],
             ['@hotwired/stimulus' => new PackageUpdateInfo(
-                packageName: '@hotwired/stimulus',
-                currentVersion: '3.2.1',
-                latestVersion: '4.0.1',
-                updateType: 'major'
+                '@hotwired/stimulus',
+                '3.2.1',
+                '4.0.1',
+                'major'
             ), ],
             null,
         ];
@@ -153,10 +153,10 @@ class ImportMapUpdateCheckerTest extends TestCase
                 ),
             ],
             ['bootstrap/dist/css/bootstrap.min.css' => new PackageUpdateInfo(
-                packageName: 'bootstrap',
-                currentVersion: '5.3.1',
-                latestVersion: '5.3.2',
-                updateType: 'patch'
+                'bootstrap',
+                '5.3.1',
+                '5.3.2',
+                'patch'
             ), ],
             null,
         ];
@@ -207,8 +207,8 @@ class ImportMapUpdateCheckerTest extends TestCase
 
     private static function createRemoteEntry(string $importName, string $version, ImportMapType $type = ImportMapType::JS, ?string $packageSpecifier = null): ImportMapEntry
     {
-        $packageSpecifier = $packageSpecifier ?? $importName;
+        $packageSpecifier ??= $importName;
 
-        return ImportMapEntry::createRemote($importName, $type, path: '/vendor/any-path.js', version: $version, packageModuleSpecifier: $packageSpecifier, isEntrypoint: false);
+        return ImportMapEntry::createRemote($importName, $type, '/vendor/any-path.js', $version, $packageSpecifier, false);
     }
 }

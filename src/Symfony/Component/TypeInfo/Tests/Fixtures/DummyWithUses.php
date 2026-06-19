@@ -11,8 +11,12 @@
 
 namespace Symfony\Component\TypeInfo\Tests\Fixtures;
 
-use Symfony\Component\TypeInfo\Type;
+use Symfony\Component\TypeInfo\{
+    Type,
+    TypeIdentifier as TI,
+};
 use \DateTimeInterface;
+
 use \DateTimeImmutable as DateTime;
 
 final class DummyWithUses

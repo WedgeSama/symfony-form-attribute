@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Validator\Constraints\DateTime;
 use Symfony\Component\Validator\Constraints\DateTimeValidator;
 use Symfony\Component\Validator\Exception\UnexpectedValueException;
@@ -25,14 +26,14 @@ class DateTimeValidatorTest extends ConstraintValidatorTestCase
 
     public function testNullIsValid()
     {
-        $this->validator->validate(null, new DateTime());
+        $this->validate(null, new DateTime());
 
         $this->assertNoViolation();
     }
 
     public function testEmptyStringIsValid()
     {
-        $this->validator->validate('', new DateTime());
+        $this->validate('', new DateTime());
 
         $this->assertNoViolation();
     }
@@ -40,16 +41,16 @@ class DateTimeValidatorTest extends ConstraintValidatorTestCase
     public function testExpectsStringCompatibleType()
     {
         $this->expectException(UnexpectedValueException::class);
-        $this->validator->validate(new \stdClass(), new DateTime());
+        $this->validate(new \stdClass(), new DateTime());
     }
 
     public function testDateTimeWithDefaultFormat()
     {
-        $this->validator->validate('1995-05-10 19:33:00', new DateTime());
+        $this->validate('1995-05-10 19:33:00', new DateTime());
 
         $this->assertNoViolation();
 
-        $this->validator->validate('1995-03-24', new DateTime());
+        $this->validate('1995-03-24', new DateTime());
 
         $this->buildViolation('This value is not a valid datetime.')
             ->setParameter('{{ value }}', '"1995-03-24"')
@@ -58,14 +59,12 @@ class DateTimeValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider getValidDateTimes
-     */
+    #[DataProvider('getValidDateTimes')]
     public function testValidDateTimes($format, $dateTime)
     {
         $constraint = new DateTime(format: $format);
 
-        $this->validator->validate($dateTime, $constraint);
+        $this->validate($dateTime, $constraint);
 
         $this->assertNoViolation();
     }
@@ -81,9 +80,7 @@ class DateTimeValidatorTest extends ConstraintValidatorTestCase
         ];
     }
 
-    /**
-     * @dataProvider getInvalidDateTimes
-     */
+    #[DataProvider('getInvalidDateTimes')]
     public function testInvalidDateTimes($format, $dateTime, $code)
     {
         $constraint = new DateTime(
@@ -91,7 +88,7 @@ class DateTimeValidatorTest extends ConstraintValidatorTestCase
             format: $format,
         );
 
-        $this->validator->validate($dateTime, $constraint);
+        $this->validate($dateTime, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', '"'.$dateTime.'"')
@@ -120,7 +117,7 @@ class DateTimeValidatorTest extends ConstraintValidatorTestCase
     {
         $constraint = new DateTime(message: 'myMessage', format: 'Y-m-d');
 
-        $this->validator->validate('2010-01-01 00:00:00', $constraint);
+        $this->validate('2010-01-01 00:00:00', $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', '"2010-01-01 00:00:00"')
@@ -131,7 +128,7 @@ class DateTimeValidatorTest extends ConstraintValidatorTestCase
 
     public function testDateTimeWithTrailingData()
     {
-        $this->validator->validate('1995-05-10 00:00:00', new DateTime(format: 'Y-m-d+'));
+        $this->validate('1995-05-10 00:00:00', new DateTime(format: 'Y-m-d+'));
         $this->assertNoViolation();
     }
 }

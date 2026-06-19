@@ -11,11 +11,24 @@
 
 namespace Symfony\Component\Routing\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Routing\CompiledRoute;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\Tests\Fixtures\CustomCompiledRoute;
 use Symfony\Component\Routing\Tests\Fixtures\CustomRouteCompiler;
+
+class RouteTestToStringGadget
+{
+    public static bool $fired = false;
+
+    public function __toString(): string
+    {
+        self::$fired = true;
+
+        return '';
+    }
+}
 
 class RouteTest extends TestCase
 {
@@ -98,7 +111,7 @@ class RouteTest extends TestCase
         $this->assertEquals('bar2', $route->getDefault('foo2'), '->getDefault() return the default value');
         $this->assertNull($route->getDefault('not_defined'), '->getDefault() return null if default value is not set');
 
-        $route->setDefault('_controller', $closure = fn () => 'Hello');
+        $route->setDefault('_controller', $closure = static fn () => 'Hello');
         $this->assertEquals($closure, $route->getDefault('_controller'), '->setDefault() sets a default value');
 
         $route->setDefaults(['foo' => 'foo']);
@@ -141,9 +154,7 @@ class RouteTest extends TestCase
         $this->assertTrue($route->hasRequirement('foo'));
     }
 
-    /**
-     * @dataProvider getInvalidRequirements
-     */
+    #[DataProvider('getInvalidRequirements')]
     public function testSetInvalidRequirement($req)
     {
         $route = new Route('/{foo}');
@@ -226,9 +237,44 @@ class RouteTest extends TestCase
         $this->assertNotSame($route, $unserialized);
     }
 
-    /**
-     * @dataProvider provideInlineDefaultAndRequirementCases
-     */
+    #[DataProvider('provideTrampolineProperties')]
+    public function testUnserializeRejectsObjectInTypedScalarProperty(string $property)
+    {
+        $data = [
+            'path' => '/',
+            'host' => '',
+            'defaults' => [],
+            'requirements' => [],
+            'options' => [],
+            'schemes' => [],
+            'methods' => [],
+            'condition' => '',
+        ];
+        $data[$property] = new RouteTestToStringGadget();
+        $payload = \sprintf('O:%d:"%s":%d:{', \strlen(Route::class), Route::class, \count($data));
+        foreach ($data as $key => $value) {
+            $payload .= serialize($key).serialize($value);
+        }
+        $payload .= '}';
+        RouteTestToStringGadget::$fired = false;
+
+        try {
+            unserialize($payload);
+            $this->fail('Expected BadMethodCallException.');
+        } catch (\BadMethodCallException $e) {
+        }
+
+        $this->assertFalse(RouteTestToStringGadget::$fired, '__toString gadget must not fire during unserialize');
+    }
+
+    public static function provideTrampolineProperties(): iterable
+    {
+        yield ['path'];
+        yield ['host'];
+        yield ['condition'];
+    }
+
+    #[DataProvider('provideInlineDefaultAndRequirementCases')]
     public function testInlineDefaultAndRequirement(Route $route, string $expectedPath, string $expectedHost, array $expectedDefaults, array $expectedRequirements)
     {
         self::assertSame($expectedPath, $route->getPath());
@@ -323,9 +369,7 @@ class RouteTest extends TestCase
         $this->assertNotSame($route, $unserialized);
     }
 
-    /**
-     * @dataProvider provideNonLocalizedRoutes
-     */
+    #[DataProvider('provideNonLocalizedRoutes')]
     public function testLocaleDefaultWithNonLocalizedRoutes(Route $route)
     {
         $this->assertNotSame('fr', $route->getDefault('_locale'));
@@ -333,9 +377,7 @@ class RouteTest extends TestCase
         $this->assertSame('fr', $route->getDefault('_locale'));
     }
 
-    /**
-     * @dataProvider provideLocalizedRoutes
-     */
+    #[DataProvider('provideLocalizedRoutes')]
     public function testLocaleDefaultWithLocalizedRoutes(Route $route)
     {
         $expected = $route->getDefault('_locale');
@@ -345,9 +387,7 @@ class RouteTest extends TestCase
         $this->assertSame($expected, $route->getDefault('_locale'));
     }
 
-    /**
-     * @dataProvider provideNonLocalizedRoutes
-     */
+    #[DataProvider('provideNonLocalizedRoutes')]
     public function testLocaleRequirementWithNonLocalizedRoutes(Route $route)
     {
         $this->assertNotSame('fr', $route->getRequirement('_locale'));
@@ -355,9 +395,7 @@ class RouteTest extends TestCase
         $this->assertSame('fr', $route->getRequirement('_locale'));
     }
 
-    /**
-     * @dataProvider provideLocalizedRoutes
-     */
+    #[DataProvider('provideLocalizedRoutes')]
     public function testLocaleRequirementWithLocalizedRoutes(Route $route)
     {
         $expected = $route->getRequirement('_locale');

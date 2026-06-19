@@ -1,19 +1,24 @@
 <?php
 
-return static function (mixed $data, \Psr\Container\ContainerInterface $valueTransformers, array $options): \Traversable {
+/**
+ * @param Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNameAttributes|null $data
+ */
+return static function (mixed $data, \Psr\Container\ContainerInterface $transformers, array $options): \Traversable {
     try {
         if ($data instanceof \Symfony\Component\JsonStreamer\Tests\Fixtures\Model\DummyWithNameAttributes) {
-            yield '{"@id":';
+            $prefix1 = '';
+            yield "{{$prefix1}\"@id\":";
             yield \json_encode($data->id, \JSON_THROW_ON_ERROR, 511);
-            yield ',"name":';
+            $prefix1 = ',';
+            yield "{$prefix1}\"name\":";
             yield \json_encode($data->name, \JSON_THROW_ON_ERROR, 511);
-            yield '}';
+            yield "}";
         } elseif (null === $data) {
-            yield 'null';
+            yield "null";
         } else {
             throw new \Symfony\Component\JsonStreamer\Exception\UnexpectedValueException(\sprintf('Unexpected "%s" value.', \get_debug_type($data)));
         }
     } catch (\JsonException $e) {
-        throw new \Symfony\Component\JsonStreamer\Exception\NotEncodableValueException($e->getMessage(), 0, $e);
+        throw new \Symfony\Component\JsonStreamer\Exception\NotEncodableValueException("Cannot encode \"Symfony\\Component\\JsonStreamer\\Tests\\Fixtures\\Model\\DummyWithNameAttributes|null\" to JSON: {$e->getMessage()}.", 0, $e);
     }
 };

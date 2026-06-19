@@ -60,7 +60,7 @@ class DumpDataCollectorTest extends TestCase
         $this->assertSame(0, $collector->getDumpsCount());
 
         $serialized = serialize($collector);
-        $this->assertSame("O:60:\"Symfony\Component\HttpKernel\DataCollector\DumpDataCollector\":1:{s:7:\"\0*\0data\";a:2:{i:0;b:0;i:1;s:5:\"UTF-8\";}}", $serialized);
+        $this->assertSame("O:60:\"Symfony\Component\HttpKernel\DataCollector\DumpDataCollector\":1:{s:4:\"data\";a:2:{i:0;b:0;i:1;s:5:\"UTF-8\";}}", $serialized);
 
         $this->assertInstanceOf(DumpDataCollector::class, unserialize($serialized));
     }
@@ -111,10 +111,10 @@ class DumpDataCollectorTest extends TestCase
         $line = __LINE__ - 1;
         $file = __FILE__;
         $xOutput = <<<EOTXT
-<pre class=sf-dump id=sf-dump data-indent-pad="  "><a href="test://{$file}:{$line}" title="{$file}"><span class=sf-dump-meta>DumpDataCollectorTest.php</span></a> on line <span class=sf-dump-meta>{$line}</span>:
-<span class=sf-dump-num>123</span>
-</pre>
-EOTXT;
+            <pre class=sf-dump id=sf-dump data-indent-pad="  "><a href="test://{$file}:{$line}" title="{$file}"><span class=sf-dump-meta>DumpDataCollectorTest.php</span></a> on line <span class=sf-dump-meta>{$line}</span>:
+            <span class=sf-dump-num>123</span>
+            </pre>
+            EOTXT;
 
         ob_start();
         $response = new Response();
@@ -176,5 +176,34 @@ EOTXT;
         ob_start();
         $collector->__destruct();
         $this->assertSame('', ob_get_clean());
+    }
+
+    public function testNonceIsForwardedToHtmlDumperOnGetDumps()
+    {
+        $data = new Data([[123]]);
+
+        $collector = new DumpDataCollector();
+        $collector->setNonce('script-abc', 'style-xyz');
+        $collector->dump($data);
+
+        $dumps = $collector->getDumps('html');
+
+        $this->assertCount(1, $dumps);
+        $this->assertStringContainsString('<script nonce="script-abc">', $dumps[0]['data']);
+        $this->assertStringContainsString('<style nonce="style-xyz">', $dumps[0]['data']);
+    }
+
+    public function testNonceFallsBackToScriptNonceForStyle()
+    {
+        $data = new Data([[123]]);
+
+        $collector = new DumpDataCollector();
+        $collector->setNonce('shared-nonce');
+        $collector->dump($data);
+
+        $dumps = $collector->getDumps('html');
+
+        $this->assertStringContainsString('<script nonce="shared-nonce">', $dumps[0]['data']);
+        $this->assertStringContainsString('<style nonce="shared-nonce">', $dumps[0]['data']);
     }
 }

@@ -1,6 +1,22 @@
 CHANGELOG
 =========
 
+8.1
+---
+
+ * Add `twig.safe_class` resource tag to register safe classes for Twig's escaper
+
+8.0
+---
+
+ * Make `TemplateCacheWarmer` class `final`
+ * Remove the `base_template_class` config option
+
+7.4
+---
+
+* Deprecate setting the `exception_controller` config to `null`. This was a legacy opt-out of a deprecation that is a no-op since Symfony 5.0. Remove that setting entirely instead.
+
 7.3
 ---
 

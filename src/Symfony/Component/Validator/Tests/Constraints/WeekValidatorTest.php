@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Validator\Constraints\Week;
 use Symfony\Component\Validator\Constraints\WeekValidator;
 use Symfony\Component\Validator\Exception\UnexpectedValueException;
@@ -24,13 +25,11 @@ class WeekValidatorTest extends ConstraintValidatorTestCase
         return new WeekValidator();
     }
 
-    /**
-     * @dataProvider provideWeekNumber
-     */
+    #[DataProvider('provideWeekNumber')]
     public function testWeekIsValidWeekNumber(string|\Stringable $value, bool $expectedViolation)
     {
         $constraint = new Week();
-        $this->validator->validate($value, $constraint);
+        $this->validate($value, $constraint);
 
         if ($expectedViolation) {
             $this->buildViolation('This value is not a valid week.')
@@ -56,10 +55,10 @@ class WeekValidatorTest extends ConstraintValidatorTestCase
     {
         $constraint = new Week(min: '2015-W10', max: '2016-W25');
 
-        $this->validator->validate('2015-W10', $constraint);
+        $this->validate('2015-W10', $constraint);
         $this->assertNoViolation();
 
-        $this->validator->validate('2016-W25', $constraint);
+        $this->validate('2016-W25', $constraint);
         $this->assertNoViolation();
     }
 
@@ -67,7 +66,7 @@ class WeekValidatorTest extends ConstraintValidatorTestCase
     {
         $constraint = new Week(min: '2015-W10');
 
-        $this->validator->validate('2015-W08', $constraint);
+        $this->validate('2015-W08', $constraint);
         $this->buildViolation('This value should not be before week "{{ min }}".')
             ->setInvalidValue('2015-W08')
             ->setParameter('{{ min }}', '2015-W10')
@@ -79,7 +78,7 @@ class WeekValidatorTest extends ConstraintValidatorTestCase
     {
         $constraint = new Week(max: '2016-W25');
 
-        $this->validator->validate('2016-W30', $constraint);
+        $this->validate('2016-W30', $constraint);
         $this->buildViolation('This value should not be after week "{{ max }}".')
             ->setInvalidValue('2016-W30')
             ->setParameter('{{ max }}', '2016-W25')
@@ -89,34 +88,30 @@ class WeekValidatorTest extends ConstraintValidatorTestCase
 
     public function testWithNewLine()
     {
-        $this->validator->validate("2015-W10\n", new Week());
+        $this->validate("2015-W10\n", new Week());
 
         $this->buildViolation('This value does not represent a valid week in the ISO 8601 format.')
             ->setCode(Week::INVALID_FORMAT_ERROR)
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider provideInvalidValues
-     */
+    #[DataProvider('provideInvalidValues')]
     public function testInvalidValues(string $value)
     {
-        $this->validator->validate($value, new Week());
+        $this->validate($value, new Week());
 
         $this->buildViolation('This value does not represent a valid week in the ISO 8601 format.')
             ->setCode(Week::INVALID_FORMAT_ERROR)
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider provideInvalidTypes
-     */
+    #[DataProvider('provideInvalidTypes')]
     public function testNonStringValues(mixed $value)
     {
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageMatches('/Expected argument of type "string", ".*" given/');
 
-        $this->validator->validate($value, new Week());
+        $this->validate($value, new Week());
     }
 
     public static function provideInvalidValues()

@@ -11,6 +11,10 @@
 
 namespace Symfony\Component\Uid\Tests;
 
+use Ds\Set;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Uid\Exception\InvalidArgumentException;
 use Symfony\Component\Uid\MaxUuid;
@@ -31,13 +35,11 @@ class UuidTest extends TestCase
     private const A_UUID_V4 = 'd6b3345b-2905-4048-a83c-b5988e765d98';
     private const A_UUID_V7 = '017f22e2-79b0-7cc3-98c4-dc0c0c07398f';
 
-    /**
-     * @dataProvider provideInvalidUuids
-     */
+    #[DataProvider('provideInvalidUuids')]
     public function testConstructorWithInvalidUuid(string $uuid)
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid UUID: "'.$uuid.'".');
+        $this->expectExceptionMessage('Invalid UUID.');
 
         Uuid::fromString($uuid);
     }
@@ -48,9 +50,20 @@ class UuidTest extends TestCase
         yield ['these are just thirty-six characters'];
     }
 
-    /**
-     * @dataProvider provideInvalidVariant
-     */
+    public function testInvalidUuidContainsInvalidValue()
+    {
+        $invalidUuid = 'this is not a uuid';
+
+        try {
+            Uuid::fromString($invalidUuid);
+            $this->fail(\sprintf('Expected "%s" to be thrown.', InvalidArgumentException::class));
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame('Invalid UUID.', $e->getMessage());
+            $this->assertSame($invalidUuid, $e->invalidValue);
+        }
+    }
+
+    #[DataProvider('provideInvalidVariant')]
     public function testInvalidVariant(string $uuid)
     {
         $uuid = new Uuid($uuid);
@@ -60,7 +73,7 @@ class UuidTest extends TestCase
         $class = Uuid::class.'V'.$uuid[14];
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid UUIDv'.$uuid[14].': "'.$uuid.'".');
+        $this->expectExceptionMessage('Invalid UUIDv'.$uuid[14].'.');
 
         new $class($uuid);
     }
@@ -279,9 +292,7 @@ class UuidTest extends TestCase
         $this->assertFalse($uuid1->equals($uuid2));
     }
 
-    /**
-     * @dataProvider provideInvalidEqualType
-     */
+    #[DataProvider('provideInvalidEqualType')]
     public function testEqualsAgainstOtherType($other)
     {
         $this->assertFalse((new UuidV4(self::A_UUID_V4))->equals($other));
@@ -303,13 +314,13 @@ class UuidTest extends TestCase
         $this->assertSame($uuid1->hash(), $uuid2->hash());
     }
 
-    /** @requires extension ds */
+    #[RequiresPhpExtension('ds')]
     public function testDsCompatibility()
     {
         $uuid1 = new UuidV4(self::A_UUID_V4);
         $uuid2 = new UuidV4(self::A_UUID_V4);
 
-        $set = new \Ds\Set();
+        $set = new Set();
         $set->add($uuid1);
         $set->add($uuid2);
 
@@ -334,11 +345,9 @@ class UuidTest extends TestCase
         $this->assertSame([$a, $b, $c, $d], $uuids);
     }
 
-    /**
-     * @testWith    ["00000000-0000-0000-0000-000000000000"]
-     *              ["1111111111111111111111"]
-     *              ["00000000000000000000000000"]
-     */
+    #[TestWith(['00000000-0000-0000-0000-000000000000'])]
+    #[TestWith(['1111111111111111111111'])]
+    #[TestWith(['00000000000000000000000000'])]
     public function testNilUuid(string $uuid)
     {
         $uuid = Uuid::fromString($uuid);
@@ -352,10 +361,8 @@ class UuidTest extends TestCase
         $this->assertSame('00000000-0000-0000-0000-000000000000', (string) new NilUuid());
     }
 
-    /**
-     * @testWith    ["ffffffff-ffff-ffff-ffff-ffffffffffff"]
-     *              ["7zzzzzzzzzzzzzzzzzzzzzzzzz"]
-     */
+    #[TestWith(['ffffffff-ffff-ffff-ffff-ffffffffffff'])]
+    #[TestWith(['7zzzzzzzzzzzzzzzzzzzzzzzzz'])]
     public function testMaxUuid(string $uuid)
     {
         $uuid = Uuid::fromString($uuid);
@@ -377,9 +384,7 @@ class UuidTest extends TestCase
         );
     }
 
-    /**
-     * @dataProvider provideInvalidBinaryFormat
-     */
+    #[DataProvider('provideInvalidBinaryFormat')]
     public function testFromBinaryInvalidFormat(string $ulid)
     {
         $this->expectException(InvalidArgumentException::class);
@@ -396,6 +401,19 @@ class UuidTest extends TestCase
         ];
     }
 
+    public function testInvalidBinaryUidContainsInvalidValue()
+    {
+        $invalidBinary = '01EW2RYKDCT2SAK454KBR2QG08';
+
+        try {
+            Uuid::fromBinary($invalidBinary);
+            $this->fail(\sprintf('Expected "%s" to be thrown.', InvalidArgumentException::class));
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame('Invalid binary uid provided.', $e->getMessage());
+            $this->assertSame($invalidBinary, $e->invalidValue);
+        }
+    }
+
     public function testFromBase58()
     {
         $this->assertEquals(
@@ -404,9 +422,7 @@ class UuidTest extends TestCase
         );
     }
 
-    /**
-     * @dataProvider provideInvalidBase58Format
-     */
+    #[DataProvider('provideInvalidBase58Format')]
     public function testFromBase58InvalidFormat(string $ulid)
     {
         $this->expectException(InvalidArgumentException::class);
@@ -431,9 +447,7 @@ class UuidTest extends TestCase
         );
     }
 
-    /**
-     * @dataProvider provideInvalidBase32Format
-     */
+    #[DataProvider('provideInvalidBase32Format')]
     public function testFromBase32InvalidFormat(string $ulid)
     {
         $this->expectException(InvalidArgumentException::class);
@@ -458,9 +472,7 @@ class UuidTest extends TestCase
         );
     }
 
-    /**
-     * @dataProvider provideInvalidRfc4122Format
-     */
+    #[DataProvider('provideInvalidRfc4122Format')]
     public function testFromRfc4122InvalidFormat(string $ulid)
     {
         $this->expectException(InvalidArgumentException::class);
@@ -545,5 +557,15 @@ class UuidTest extends TestCase
     public function testToString()
     {
         $this->assertSame('a45a8538-77a9-4335-bd30-236f59b81b81', (new UuidV4('a45a8538-77a9-4335-bd30-236f59b81b81'))->toString());
+    }
+
+    #[TestWith(['1645557742.000001'])]
+    #[TestWith(['1645557742.123456'])]
+    #[TestWith(['1645557742.999999'])]
+    public function testV7MicrosecondPrecision(string $time)
+    {
+        $uuid = UuidV7::fromString(UuidV7::generate(\DateTimeImmutable::createFromFormat('U.u', $time)));
+
+        $this->assertSame($time, $uuid->getDateTime()->format('U.u'));
     }
 }

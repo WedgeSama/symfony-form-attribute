@@ -2,6 +2,7 @@ name: Intl/Emoji data
 
 on:
   push:
+    branches: [ '*.*' ]
     paths:
       - 'src/Symfony/Component/Emoji/*.php'
       - 'src/Symfony/Component/Emoji/Resources/data/**'
@@ -40,7 +41,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Install system dependencies
         run: |
@@ -58,12 +61,12 @@ jobs:
           echo "SYMFONY_ICU_VERSION=$SYMFONY_ICU_VERSION" >> $GITHUB_ENV
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           coverage: "none"
           extensions: "zip,intl-${{env.SYMFONY_ICU_VERSION}}"
-          ini-values: "memory_limit=-1"
-          php-version: "8.2"
+          ini-values: memory_limit=-1,intl.default_locale=en,intl.error_level=0
+          php-version: "8.4"
 
       - name: Install dependencies
         run: |
@@ -84,7 +87,11 @@ jobs:
         run: uconv -V && php -i | grep 'ICU version'
 
       - name: Run intl-data tests
-        run: ./phpunit --group intl-data -v
+        run: |
+          ./phpunit --group intl-data --exclude-group intl-data-isolate
+          ./phpunit --group intl-data --filter testWhenEnvVarNotSet
+          ./phpunit --group intl-data --filter testWhenEnvVarSetFalse
+          ./phpunit --group intl-data --filter testWhenEnvVarSetTrue
 
       - name: Test intl-data with compressed data
         run: |
@@ -96,7 +103,7 @@ jobs:
           ./phpunit src/Symfony/Component/Intl
 
       - name: Run Emoji tests
-        run: ./phpunit src/Symfony/Component/Emoji -v
+        run: ./phpunit src/Symfony/Component/Emoji
 
       - name: Test Emoji with compressed data
         run: |

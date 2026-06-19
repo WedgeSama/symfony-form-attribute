@@ -27,7 +27,7 @@ Phrase locale names
 -------------------
 
 Translations being imported using the Symfony XLIFF format in Phrase, locales are matched on locale name in Phrase.
-Therefor it's necessary the locale names should be as defined in [RFC4646](https://www.ietf.org/rfc/rfc4646.txt) (e.g. pt-BR rather than pt_BR).
+Therefore it's necessary the locale names should be as defined in [RFC4646](https://www.ietf.org/rfc/rfc4646.txt) (e.g. pt-BR rather than pt_BR).
 Not doing so will result in Phrase creating a new locale for the imported keys.
 
 Locale creation
@@ -45,7 +45,7 @@ Cache
 -----
 
 The read responses from Phrase are cached to speed up the read and delete methods of this provider and also to contribute to the rate limit as little as possible.
-Therefor the factory should be initialised with a PSR-6 compatible cache adapter.
+Therefore the factory should be initialised with a PSR-6 compatible cache adapter.
 
 Fine tuning your Phrase api calls
 ---------------------------------
@@ -80,6 +80,13 @@ This provider uses the following default values for read and write requests. All
 | read         | `fallback_locale_enabled`    |  bool  | 0                                             |
 | write        | `update_translations`        |  bool  | 1                                             |
 
+Sponsor
+-------
+
+This package is looking for a [backer][1].
+
+Help Symfony by [sponsoring][3] its development!
+
 Resources
 ---------
 
@@ -88,3 +95,6 @@ Resources
  * [Report issues](https://github.com/symfony/symfony/issues) and
    [send Pull Requests](https://github.com/symfony/symfony/pulls)
    in the [main Symfony repository](https://github.com/symfony/symfony)
+
+[1]: https://symfony.com/backers
+[3]: https://symfony.com/sponsor

@@ -11,28 +11,27 @@
 
 namespace Symfony\Component\HttpClient\Tests;
 
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Symfony\Component\HttpClient\CurlHttpClient;
 use Symfony\Component\HttpClient\Exception\InvalidArgumentException;
-use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-/**
- * @requires extension curl
- *
- * @group dns-sensitive
- */
+#[RequiresPhpExtension('curl')]
+#[Group('dns-sensitive')]
 class CurlHttpClientTest extends HttpClientTestCase
 {
-    protected function getHttpClient(string $testCase): HttpClientInterface
+    protected function getHttpClient(string $testCase): CurlHttpClient
     {
+        $usePersistentConnections = str_contains($testCase, 'Persistent');
         if (!str_contains($testCase, 'Push')) {
-            return new CurlHttpClient(['verify_peer' => false, 'verify_host' => false]);
+            return new CurlHttpClient(['verify_peer' => false, 'verify_host' => false, 'extra' => ['use_persistent_connections' => $usePersistentConnections]]);
         }
 
         if (!\defined('CURLMOPT_PUSHFUNCTION') || 0x073D00 > ($v = curl_version())['version_number'] || !(\CURL_VERSION_HTTP2 & $v['features'])) {
             $this->markTestSkipped('curl <7.61 is used or it is not compiled with support for HTTP/2 PUSH');
         }
 
-        return new CurlHttpClient(['verify_peer' => false, 'verify_host' => false], 6, 50);
+        return new CurlHttpClient(['verify_peer' => false, 'verify_host' => false, 'extra' => ['use_persistent_connections' => $usePersistentConnections]], 6, 50);
     }
 
     public function testTimeoutIsNotAFatalError()
@@ -48,11 +47,66 @@ class CurlHttpClientTest extends HttpClientTestCase
     {
         $httpClient = $this->getHttpClient(__FUNCTION__);
 
-        $r = new \ReflectionMethod($httpClient, 'ensureState');
-        $clientState = $r->invoke($httpClient);
+        $r = new \ReflectionProperty($httpClient, 'multi');
+        $clientState = $r->getValue($httpClient);
         $initialShareId = $clientState->share;
         $httpClient->reset();
         self::assertNotSame($initialShareId, $clientState->share);
+    }
+
+    public function testCurlClientStateIsSharedBetweenClones()
+    {
+        $client = $this->getHttpClient(__FUNCTION__);
+        $cloneA = $client->withOptions(['headers' => ['Foo: bar']]);
+        $cloneB = $client->withOptions(['headers' => ['Foo: baz']]);
+
+        $r = new \ReflectionProperty($client, 'multi');
+        $state = $r->getValue($client);
+
+        self::assertSame($state, $r->getValue($cloneA));
+        self::assertSame($state, $r->getValue($cloneB));
+    }
+
+    public function testCurlClientStateInitializesHandlesLazily()
+    {
+        $client = $this->getHttpClient(__FUNCTION__);
+
+        $r = new \ReflectionProperty($client, 'multi');
+        $state = $r->getValue($client);
+
+        self::assertFalse(isset($state->handle));
+        self::assertFalse(isset($state->share));
+        self::assertFalse(isset($state->persistentShare));
+
+        $client->request('GET', 'http://127.0.0.1:8057/json')->getStatusCode();
+
+        self::assertInstanceOf(\CurlMultiHandle::class, $state->handle);
+        self::assertInstanceOf(\CurlShareHandle::class, $state->share);
+        self::assertFalse(isset($state->persistentShare));
+    }
+
+    public function testCurlClientPersistentStateInitializesHandlesLazily()
+    {
+        $client = $this->getHttpClient(__FUNCTION__);
+
+        $r = new \ReflectionProperty($client, 'multi');
+        $state = $r->getValue($client);
+
+        self::assertFalse(isset($state->handle));
+        self::assertFalse(isset($state->share));
+        self::assertFalse(isset($state->persistentShare));
+
+        $client->request('GET', 'http://127.0.0.1:8057/json')->getStatusCode();
+
+        self::assertInstanceOf(\CurlMultiHandle::class, $state->handle);
+
+        if (\PHP_VERSION_ID >= 80500) {
+            self::assertFalse(isset($state->share));
+            self::assertInstanceOf(\CurlSharePersistentHandle::class, $state->persistentShare);
+        } else {
+            self::assertInstanceOf(\CurlShareHandle::class, $state->share);
+            self::assertSame($state->share, $state->persistentShare);
+        }
     }
 
     public function testProcessAfterReset()
@@ -111,6 +165,21 @@ class CurlHttpClientTest extends HttpClientTestCase
         ]);
     }
 
+    public function testOverridingMaxConnectDurationUsingCurlOptions()
+    {
+        $httpClient = $this->getHttpClient(__FUNCTION__);
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Cannot set "CURLOPT_CONNECTTIMEOUT_MS" with "extra.curl", use option "max_connect_duration" instead.');
+
+        $httpClient->request('GET', 'http://localhost:8057/', [
+            'extra' => [
+                'curl' => [
+                    \CURLOPT_CONNECTTIMEOUT_MS => 5000,
+                ],
+            ],
+        ]);
+    }
+
     public function testKeepAuthorizationHeaderOnRedirectToSameHostWithConfiguredHostToIpAddressMapping()
     {
         $httpClient = $this->getHttpClient(__FUNCTION__);
@@ -127,9 +196,101 @@ class CurlHttpClientTest extends HttpClientTestCase
         $this->assertSame('/302', $response->toArray()['REQUEST_URI'] ?? null);
     }
 
-    /**
-     * @group integration
-     */
+    public function testNtlmRequiresFreshConnectionStateIsEmptyByDefault()
+    {
+        $client = $this->getHttpClient(__FUNCTION__);
+
+        $r = new \ReflectionProperty($client, 'multi');
+        $state = $r->getValue($client);
+
+        self::assertSame([], $state->ntlmRequiresFreshConnection);
+    }
+
+    public function testNtlmFreshConnectionForcedWhenOriginKnown()
+    {
+        $client = $this->getHttpClient(__FUNCTION__);
+
+        $client->request('GET', 'http://127.0.0.1:8057/')->getContent();
+
+        $r = new \ReflectionProperty($client, 'multi');
+        $state = $r->getValue($client);
+        $state->ntlmRequiresFreshConnection['http://127.0.0.1:8057'] = true;
+
+        $response = $client->request('GET', 'http://127.0.0.1:8057/', [
+            'auth_ntlm' => 'user:pass',
+        ]);
+        $response->getStatusCode();
+
+        self::assertStringNotContainsString('Re-using existing connection', $response->getInfo('debug'));
+    }
+
+    public function testNtlmStateNotMutatedByNonNtlmRequest()
+    {
+        // A plain (non-NTLM) request must not touch the NTLM origin map. This guards against
+        // a regression where the detection logic fires on every CURLMSG_DONE event (e.g. an
+        // inverted condition guard) — which would silently mark every origin as needing a
+        // fresh NTLM connection.
+        $client = $this->getHttpClient(__FUNCTION__);
+        $client->request('GET', 'http://127.0.0.1:8057/json')->getContent();
+
+        $r = new \ReflectionProperty($client, 'multi');
+        $state = $r->getValue($client);
+
+        self::assertSame([], $state->ntlmRequiresFreshConnection);
+    }
+
+    public function testNtlmStateNotMutatedByFreshConnectionNtlm401()
+    {
+        // A 401 + NTLM challenge that arrives on a fresh connection (NUM_CONNECTS != 0) is
+        // the legitimate first leg of libcurl's in-request handshake — not the cross-request
+        // de-auth case. Detection must NOT fire, and the origin must NOT be marked.
+        $client = $this->getHttpClient(__FUNCTION__);
+        $client->request('GET', 'http://127.0.0.1:8057/custom?'.http_build_query([
+            'status' => 401,
+            'headers' => ['WWW-Authenticate: NTLM TlRMTVNTUAACAAAAAwADADgAAAAGgokCB7m5ksVjjAsAAAAAAAAAAHYAdgA7AAAACgB8TwAAAA9QUkQ=', 'Content-Length: 0'],
+        ]), [
+            'auth_ntlm' => 'user:pass',
+        ])->getStatusCode();
+
+        $r = new \ReflectionProperty($client, 'multi');
+        $state = $r->getValue($client);
+
+        self::assertSame([], $state->ntlmRequiresFreshConnection);
+    }
+
+    public function testNoNtlmLogMessagesForNonNtlmRequest()
+    {
+        // The observable signal for "we discarded a connection" is a specific log line.
+        // A plain request must not produce that line — protects against bugs that cause
+        // the retry/discovery path to fire unconditionally.
+        $client = $this->getHttpClient(__FUNCTION__);
+        $logger = new TestLogger();
+        $client->setLogger($logger);
+
+        $client->request('GET', 'http://127.0.0.1:8057/json')->getContent();
+
+        $ntlmLogs = array_filter($logger->logs, static fn ($msg) => str_contains($msg, 'NTLM'));
+        self::assertSame([], $ntlmLogs);
+    }
+
+    public function testNtlmLoopGuardDoesNotRetryWhenOriginAlreadyKnown()
+    {
+        $client = $this->getHttpClient(__FUNCTION__);
+        $r = new \ReflectionProperty($client, 'multi');
+        $state = $r->getValue($client);
+        $state->ntlmRequiresFreshConnection['http://127.0.0.1:8057'] = true;
+
+        $response = $client->request('GET', 'http://127.0.0.1:8057/custom?'.http_build_query([
+            'status' => 401,
+            'headers' => ['WWW-Authenticate: NTLM TlRMTVNTUAACAAAAAwADADgAAAAGgokCB7m5ksVjjAsAAAAAAAAAAHYAdgA7AAAACgB8TwAAAA9QUkQ=', 'Content-Length: 0'],
+        ]), [
+            'auth_ntlm' => 'user:pass',
+        ]);
+
+        self::assertSame(401, $response->getStatusCode());
+    }
+
+    #[Group('integration')]
     public function testMaxConnections()
     {
         foreach ($ports = [80, 8681, 8682, 8683, 8684] as $port) {

@@ -11,15 +11,15 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Symfony\Component\Validator\Constraints\WordCount;
 use Symfony\Component\Validator\Constraints\WordCountValidator;
 use Symfony\Component\Validator\Exception\UnexpectedValueException;
 use Symfony\Component\Validator\Test\ConstraintValidatorTestCase;
 use Symfony\Component\Validator\Tests\Constraints\Fixtures\StringableValue;
 
-/**
- * @requires extension intl
- */
+#[RequiresPhpExtension('intl')]
 class WordCountValidatorTest extends ConstraintValidatorTestCase
 {
     protected function createValidator(): WordCountValidator
@@ -27,12 +27,10 @@ class WordCountValidatorTest extends ConstraintValidatorTestCase
         return new WordCountValidator();
     }
 
-    /**
-     * @dataProvider provideValidValues
-     */
+    #[DataProvider('provideValidValues')]
     public function testValidWordCount(string|\Stringable|null $value, int $expectedWordCount)
     {
-        $this->validator->validate($value, new WordCount(min: $expectedWordCount, max: $expectedWordCount));
+        $this->validate($value, new WordCount(min: $expectedWordCount, max: $expectedWordCount));
 
         $this->assertNoViolation();
     }
@@ -40,7 +38,7 @@ class WordCountValidatorTest extends ConstraintValidatorTestCase
     public function testTooShort()
     {
         $constraint = new WordCount(min: 4, minMessage: 'myMessage');
-        $this->validator->validate('my ascii string', $constraint);
+        $this->validate('my ascii string', $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ count }}', 3)
@@ -53,7 +51,7 @@ class WordCountValidatorTest extends ConstraintValidatorTestCase
     public function testTooLong()
     {
         $constraint = new WordCount(max: 3, maxMessage: 'myMessage');
-        $this->validator->validate('my beautiful ascii string', $constraint);
+        $this->validate('my beautiful ascii string', $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ count }}', 4)
@@ -63,15 +61,13 @@ class WordCountValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider provideInvalidTypes
-     */
+    #[DataProvider('provideInvalidTypes')]
     public function testNonStringValues(mixed $value)
     {
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageMatches('/Expected argument of type "string", ".*" given/');
 
-        $this->validator->validate($value, new WordCount(min: 1));
+        $this->validate($value, new WordCount(min: 1));
     }
 
     public static function provideValidValues()

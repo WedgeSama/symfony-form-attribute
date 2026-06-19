@@ -11,7 +11,6 @@
 
 namespace Symfony\Component\JsonStreamer\DataModel\Write;
 
-use Symfony\Component\JsonStreamer\DataModel\DataAccessorInterface;
 use Symfony\Component\JsonStreamer\Exception\InvalidArgumentException;
 use Symfony\Component\TypeInfo\Type;
 use Symfony\Component\TypeInfo\Type\UnionType;
@@ -43,7 +42,7 @@ final class CompositeNode implements DataModelNodeInterface
      * @param list<DataModelNodeInterface> $nodes
      */
     public function __construct(
-        private DataAccessorInterface $accessor,
+        private string $accessor,
         array $nodes,
     ) {
         if (\count($nodes) < 2) {
@@ -56,11 +55,11 @@ final class CompositeNode implements DataModelNodeInterface
             }
         }
 
-        usort($nodes, fn (CollectionNode|ObjectNode|BackedEnumNode|ScalarNode $a, CollectionNode|ObjectNode|BackedEnumNode|ScalarNode $b): int => self::NODE_PRECISION[$b::class] <=> self::NODE_PRECISION[$a::class]);
+        usort($nodes, static fn (CollectionNode|ObjectNode|BackedEnumNode|ScalarNode $a, CollectionNode|ObjectNode|BackedEnumNode|ScalarNode $b): int => self::NODE_PRECISION[$b::class] <=> self::NODE_PRECISION[$a::class]);
         $this->nodes = $nodes;
     }
 
-    public function withAccessor(DataAccessorInterface $accessor): self
+    public function withAccessor(string $accessor): self
     {
         return new self($accessor, array_map(static fn (DataModelNodeInterface $n): DataModelNodeInterface => $n->withAccessor($accessor), $this->nodes));
     }
@@ -70,14 +69,14 @@ final class CompositeNode implements DataModelNodeInterface
         return (string) $this->getType();
     }
 
-    public function getAccessor(): DataAccessorInterface
+    public function getAccessor(): string
     {
         return $this->accessor;
     }
 
     public function getType(): UnionType
     {
-        return Type::union(...array_map(fn (DataModelNodeInterface $n): Type => $n->getType(), $this->nodes));
+        return Type::union(...array_map(static fn (DataModelNodeInterface $n): Type => $n->getType(), $this->nodes));
     }
 
     /**

@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Messenger\Tests\EventListener;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\DependencyInjection\Container;
@@ -146,9 +147,7 @@ class SendFailedMessageForRetryListenerTest extends TestCase
         $listener->onMessageFailed($event);
     }
 
-    /**
-     * @dataProvider provideRetryDelays
-     */
+    #[DataProvider('provideRetryDelays')]
     public function testWrappedRecoverableExceptionRetryDelayOverridesStrategy(array $retries, int $expectedDelay)
     {
         $sender = $this->createMock(SenderInterface::class);
@@ -177,7 +176,7 @@ class SendFailedMessageForRetryListenerTest extends TestCase
         $envelope = new Envelope(new \stdClass());
         $exception = new HandlerFailedException(
             $envelope,
-            array_map(fn (int $retry) => new RecoverableMessageHandlingException('retry', retryDelay: $retry), $retries)
+            array_map(static fn (int $retry) => new RecoverableMessageHandlingException('retry', retryDelay: $retry), $retries)
         );
         $event = new WorkerMessageFailedEvent($envelope, 'my_receiver', $exception);
 
@@ -200,6 +199,92 @@ class SendFailedMessageForRetryListenerTest extends TestCase
             [0, 2000, 1000],
             0,
         ];
+    }
+
+    public function testRecoverableExceptionWithoutForceRetryRespectsRetryStrategy()
+    {
+        $sender = $this->createMock(SenderInterface::class);
+        $sender->expects($this->never())->method('send');
+        $senderLocator = new Container();
+        $senderLocator->set('my_receiver', $sender);
+        $retryStrategy = $this->createMock(RetryStrategyInterface::class);
+        $retryStrategy->expects($this->once())->method('isRetryable')->willReturn(false);
+        $retryStrategy->expects($this->never())->method('getWaitingTime');
+        $retryStrategyLocator = new Container();
+        $retryStrategyLocator->set('my_receiver', $retryStrategy);
+
+        $listener = new SendFailedMessageForRetryListener($senderLocator, $retryStrategyLocator);
+
+        $exception = new RecoverableMessageHandlingException('retry', forceRetry: false);
+        $envelope = new Envelope(new \stdClass());
+        $event = new WorkerMessageFailedEvent($envelope, 'my_receiver', $exception);
+
+        $listener->onMessageFailed($event);
+
+        /** @var SentForRetryStamp|null $sentForRetryStamp */
+        $sentForRetryStamp = $event->getEnvelope()->last(SentForRetryStamp::class);
+
+        $this->assertInstanceOf(SentForRetryStamp::class, $sentForRetryStamp);
+        $this->assertFalse($sentForRetryStamp->isSent);
+    }
+
+    public function testRecoverableExceptionWithoutForceRetryStillUsesItsRetryDelay()
+    {
+        $sender = $this->createMock(SenderInterface::class);
+        $sender->expects($this->once())->method('send')->willReturnCallback(function (Envelope $envelope) {
+            $delayStamp = $envelope->last(DelayStamp::class);
+            $redeliveryStamp = $envelope->last(RedeliveryStamp::class);
+
+            $this->assertInstanceOf(DelayStamp::class, $delayStamp);
+            $this->assertSame(1234, $delayStamp->getDelay());
+
+            $this->assertInstanceOf(RedeliveryStamp::class, $redeliveryStamp);
+            $this->assertSame(1, $redeliveryStamp->getRetryCount());
+
+            return $envelope;
+        });
+        $senderLocator = new Container();
+        $senderLocator->set('my_receiver', $sender);
+        $retryStrategy = $this->createMock(RetryStrategyInterface::class);
+        $retryStrategy->expects($this->once())->method('isRetryable')->willReturn(true);
+        $retryStrategy->expects($this->never())->method('getWaitingTime');
+        $retryStrategyLocator = new Container();
+        $retryStrategyLocator->set('my_receiver', $retryStrategy);
+
+        $listener = new SendFailedMessageForRetryListener($senderLocator, $retryStrategyLocator);
+
+        $exception = new RecoverableMessageHandlingException('retry', retryDelay: 1234, forceRetry: false);
+        $envelope = new Envelope(new \stdClass());
+        $event = new WorkerMessageFailedEvent($envelope, 'my_receiver', $exception);
+
+        $listener->onMessageFailed($event);
+    }
+
+    public function testWrappedRecoverableExceptionWithoutForceRetryRespectsRetryStrategy()
+    {
+        $sender = $this->createMock(SenderInterface::class);
+        $sender->expects($this->never())->method('send');
+        $senderLocator = new Container();
+        $senderLocator->set('my_receiver', $sender);
+        $retryStrategy = $this->createMock(RetryStrategyInterface::class);
+        $retryStrategy->expects($this->once())->method('isRetryable')->willReturn(false);
+        $retryStrategy->expects($this->never())->method('getWaitingTime');
+        $retryStrategyLocator = new Container();
+        $retryStrategyLocator->set('my_receiver', $retryStrategy);
+
+        $listener = new SendFailedMessageForRetryListener($senderLocator, $retryStrategyLocator);
+
+        $envelope = new Envelope(new \stdClass());
+        $exception = new HandlerFailedException($envelope, [new RecoverableMessageHandlingException('retry', forceRetry: false)]);
+        $event = new WorkerMessageFailedEvent($envelope, 'my_receiver', $exception);
+
+        $listener->onMessageFailed($event);
+
+        /** @var SentForRetryStamp|null $sentForRetryStamp */
+        $sentForRetryStamp = $event->getEnvelope()->last(SentForRetryStamp::class);
+
+        $this->assertInstanceOf(SentForRetryStamp::class, $sentForRetryStamp);
+        $this->assertFalse($sentForRetryStamp->isSent);
     }
 
     public function testEnvelopeIsSentToTransportOnRetry()
@@ -333,9 +418,7 @@ class SendFailedMessageForRetryListenerTest extends TestCase
         $envelope = new Envelope(new \stdClass());
 
         $sender = $this->createMock(SenderInterface::class);
-        $sender->expects($this->once())->method('send')->willReturnCallback(static function (Envelope $envelope) {
-            return $envelope->with(new TransportMessageIdStamp(123));
-        });
+        $sender->expects($this->once())->method('send')->willReturnCallback(static fn (Envelope $envelope) => $envelope->with(new TransportMessageIdStamp(123)));
 
         $eventDispatcher = $this->createMock(EventDispatcherInterface::class);
         $eventDispatcher->expects($this->once())->method('dispatch')->willReturnCallback(

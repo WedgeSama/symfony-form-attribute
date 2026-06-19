@@ -11,14 +11,13 @@
 
 namespace Store;
 
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Relay\Cluster as RelayCluster;
 use Symfony\Component\Lock\Tests\Store\AbstractRedisStoreTestCase;
 
-/**
- * @requires extension relay
- *
- * @group integration
- */
+#[RequiresPhpExtension('relay')]
+#[Group('integration')]
 class RelayClusterStoreTest extends AbstractRedisStoreTestCase
 {
     protected function setUp(): void
@@ -43,6 +42,6 @@ class RelayClusterStoreTest extends AbstractRedisStoreTestCase
 
     protected function getRedisConnection(): RelayCluster
     {
-        return new RelayCluster('', explode(' ', getenv('REDIS_CLUSTER_HOSTS')));
+        return new RelayCluster(null, explode(' ', getenv('REDIS_CLUSTER_HOSTS')));
     }
 }

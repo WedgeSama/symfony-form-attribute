@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Mime\Tests\Part;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Mime\Encoder\ContentEncoderInterface;
 use Symfony\Component\Mime\Exception\InvalidArgumentException;
@@ -21,8 +22,50 @@ use Symfony\Component\Mime\Header\UnstructuredHeader;
 use Symfony\Component\Mime\Part\File;
 use Symfony\Component\Mime\Part\TextPart;
 
+class TextPartTestToStringGadget
+{
+    public static bool $fired = false;
+
+    public function __toString(): string
+    {
+        self::$fired = true;
+
+        return '';
+    }
+}
+
 class TextPartTest extends TestCase
 {
+    #[DataProvider('provideTrampolineKeys')]
+    public function testUnserializeRejectsObjectInTypedStringProperty(string $key)
+    {
+        $template = (new TextPart('body content'))->__serialize();
+        $template[$key] = new TextPartTestToStringGadget();
+        $payload = \sprintf('O:%d:"%s":%d:{', \strlen(TextPart::class), TextPart::class, \count($template));
+        foreach ($template as $k => $v) {
+            $payload .= serialize($k).serialize($v);
+        }
+        $payload .= '}';
+        TextPartTestToStringGadget::$fired = false;
+
+        try {
+            unserialize($payload);
+            $this->fail('Expected BadMethodCallException.');
+        } catch (\BadMethodCallException $e) {
+        }
+
+        $this->assertFalse(TextPartTestToStringGadget::$fired, '__toString gadget must not fire during unserialize');
+    }
+
+    public static function provideTrampolineKeys(): iterable
+    {
+        yield ['charset'];
+        yield ['subtype'];
+        yield ['disposition'];
+        yield ['name'];
+        yield ['encoding'];
+    }
+
     public function testConstructor()
     {
         $p = new TextPart('content');
@@ -105,7 +148,7 @@ class TextPartTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('The encoding must be one of "quoted-printable", "base64", "8bit", "upper_encoder" ("this_encoding_does_not_exist" given).');
 
-        $upperEncoder = $this->createMock(ContentEncoderInterface::class);
+        $upperEncoder = $this->createStub(ContentEncoderInterface::class);
         $upperEncoder->method('getName')->willReturn('upper_encoder');
 
         TextPart::addEncoder($upperEncoder);
@@ -117,7 +160,7 @@ class TextPartTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('You are not allowed to change the default encoders ("quoted-printable", "base64", and "8bit").');
 
-        $base64Encoder = $this->createMock(ContentEncoderInterface::class);
+        $base64Encoder = $this->createStub(ContentEncoderInterface::class);
         $base64Encoder->method('getName')->willReturn('base64');
 
         TextPart::addEncoder($base64Encoder);

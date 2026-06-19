@@ -11,6 +11,7 @@
 
 namespace Symfony\Bridge\PhpUnit;
 
+use Doctrine\Deprecations\Deprecation;
 use PHPUnit\Event\Code\Test;
 use PHPUnit\Event\Code\TestMethod;
 use PHPUnit\Event\Test\BeforeTestMethodErrored;
@@ -38,8 +39,21 @@ class SymfonyExtension implements Extension
 {
     public function bootstrap(Configuration $configuration, Facade $facade, ParameterCollection $parameters): void
     {
+        $deprecationsNamespacesMapping = null;
+        if ($parameters->has('deprecations-namespaces-mapping')) {
+            $deprecationsNamespacesMapping = [];
+            foreach (explode(',', $parameters->get('deprecations-namespaces-mapping')) as $pair) {
+                [$key, $value] = explode('=>', $pair, 2);
+                $deprecationsNamespacesMapping[trim($key)] = trim($value);
+            }
+        }
+
         if (class_exists(DebugClassLoader::class)) {
-            DebugClassLoader::enable();
+            DebugClassLoader::enable($deprecationsNamespacesMapping);
+        }
+
+        if (class_exists(Deprecation::class)) {
+            Deprecation::withoutDeduplication();
         }
 
         $reader = new AttributeReader();

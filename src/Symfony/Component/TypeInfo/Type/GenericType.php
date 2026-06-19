@@ -59,6 +59,9 @@ final class GenericType extends Type implements WrappingTypeInterface
         return $this->variableTypes;
     }
 
+    /**
+     * @param-immediately-invoked-callable $specification
+     */
     public function wrappedTypeIsSatisfiedBy(callable $specification): bool
     {
         return $this->getWrappedType()->isSatisfiedBy($specification);
@@ -72,7 +75,7 @@ final class GenericType extends Type implements WrappingTypeInterface
         $glue = '';
         foreach ($this->variableTypes as $t) {
             $variableTypesString .= $glue.$t;
-            $glue = ',';
+            $glue = ', ';
         }
 
         return $typeString.'<'.$variableTypesString.'>';

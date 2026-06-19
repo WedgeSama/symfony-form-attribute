@@ -37,14 +37,13 @@ use Symfony\Bundle\FrameworkBundle\Command\SecretsRevealCommand;
 use Symfony\Bundle\FrameworkBundle\Command\SecretsSetCommand;
 use Symfony\Bundle\FrameworkBundle\Command\TranslationDebugCommand;
 use Symfony\Bundle\FrameworkBundle\Command\TranslationExtractCommand;
-use Symfony\Bundle\FrameworkBundle\Command\WorkflowDumpCommand;
 use Symfony\Bundle\FrameworkBundle\Command\YamlLintCommand;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\EventListener\SuggestMissingPackageSubscriber;
-use Symfony\Component\Console\EventListener\ErrorListener;
+use Symfony\Component\Console\EventListener\ValidateQuestionInputListener;
 use Symfony\Component\Console\Messenger\RunCommandMessageHandler;
-use Symfony\Component\Dotenv\Command\DebugCommand as DotenvDebugCommand;
 use Symfony\Component\ErrorHandler\Command\ErrorDumpCommand;
+use Symfony\Component\Form\Command\DebugCommand;
 use Symfony\Component\Messenger\Command\ConsumeMessagesCommand;
 use Symfony\Component\Messenger\Command\DebugCommand as MessengerDebugCommand;
 use Symfony\Component\Messenger\Command\FailedMessagesRemoveCommand;
@@ -60,18 +59,18 @@ use Symfony\Component\Translation\Command\TranslationPullCommand;
 use Symfony\Component\Translation\Command\TranslationPushCommand;
 use Symfony\Component\Translation\Command\XliffLintCommand;
 use Symfony\Component\Validator\Command\DebugCommand as ValidatorDebugCommand;
+use Symfony\Component\Workflow\Command\WorkflowDumpCommand;
 use Symfony\WebpackEncoreBundle\Asset\EntrypointLookupInterface;
 
 return static function (ContainerConfigurator $container) {
     $container->services()
-        ->set('console.error_listener', ErrorListener::class)
-            ->args([
-                service('logger')->nullOnInvalid(),
-            ])
-            ->tag('kernel.event_subscriber')
-            ->tag('monolog.logger', ['channel' => 'console'])
-
         ->set('console.suggest_missing_package_subscriber', SuggestMissingPackageSubscriber::class)
+            ->tag('kernel.event_subscriber')
+
+        ->set('.console.validate_question_input_listener', ValidateQuestionInputListener::class)
+            ->args([
+                service('validator'),
+            ])
             ->tag('kernel.event_subscriber')
 
         ->set('console.command.about', AboutCommand::class)
@@ -128,6 +127,9 @@ return static function (ContainerConfigurator $container) {
             ->tag('console.command')
 
         ->set('console.command.config_debug', ConfigDebugCommand::class)
+            ->args([
+                service('container.env_var_processors_locator'),
+            ])
             ->tag('console.command')
 
         ->set('console.command.config_dump_reference', ConfigDumpReferenceCommand::class)
@@ -143,13 +145,6 @@ return static function (ContainerConfigurator $container) {
             ->args([
                 null,
                 service('debug.file_link_formatter')->nullOnInvalid(),
-            ])
-            ->tag('console.command')
-
-        ->set('console.command.dotenv_debug', DotenvDebugCommand::class)
-            ->args([
-                param('kernel.environment'),
-                param('kernel.project_dir'),
             ])
             ->tag('console.command')
 
@@ -200,7 +195,7 @@ return static function (ContainerConfigurator $container) {
                 service('messenger.routable_message_bus'),
                 service('event_dispatcher'),
                 service('logger')->nullOnInvalid(),
-                service('messenger.transport.native_php_serializer')->nullOnInvalid(),
+                service('.messenger.transport.native_php_serializer')->nullOnInvalid(),
                 null,
             ])
             ->tag('console.command')
@@ -210,7 +205,7 @@ return static function (ContainerConfigurator $container) {
             ->args([
                 abstract_arg('Default failure receiver name'),
                 abstract_arg('Receivers'),
-                service('messenger.transport.native_php_serializer')->nullOnInvalid(),
+                service('.messenger.transport.native_php_serializer')->nullOnInvalid(),
             ])
             ->tag('console.command')
 
@@ -218,7 +213,7 @@ return static function (ContainerConfigurator $container) {
             ->args([
                 abstract_arg('Default failure receiver name'),
                 abstract_arg('Receivers'),
-                service('messenger.transport.native_php_serializer')->nullOnInvalid(),
+                service('.messenger.transport.native_php_serializer')->nullOnInvalid(),
             ])
             ->tag('console.command')
 
@@ -311,6 +306,7 @@ return static function (ContainerConfigurator $container) {
         ->set('console.command.workflow_dump', WorkflowDumpCommand::class)
             ->args([
                 tagged_locator('workflow', 'name'),
+                service('event_dispatcher')->nullOnInvalid(),
             ])
             ->tag('console.command')
 
@@ -327,7 +323,7 @@ return static function (ContainerConfigurator $container) {
             ])
             ->tag('console.command')
 
-        ->set('console.command.form_debug', \Symfony\Component\Form\Command\DebugCommand::class)
+        ->set('console.command.form_debug', DebugCommand::class)
             ->args([
                 service('form.registry'),
                 [], // All form types namespaces are stored here by FormPass
@@ -335,6 +331,7 @@ return static function (ContainerConfigurator $container) {
                 [], // All type extensions are stored here by FormPass
                 [], // All type guessers are stored here by FormPass
                 service('debug.file_link_formatter')->nullOnInvalid(),
+                [], // All metadata form types are stored here by FormPass
             ])
             ->tag('console.command')
 
@@ -406,6 +403,6 @@ return static function (ContainerConfigurator $container) {
             ->args([
                 service('console.messenger.application'),
             ])
-            ->tag('messenger.message_handler')
+            ->tag('messenger.message_handler', ['sign' => true])
     ;
 };

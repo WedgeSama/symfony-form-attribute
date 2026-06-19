@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\DependencyInjection\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -34,9 +35,7 @@ class ContainerTest extends TestCase
         $this->assertEquals(['foo' => 'bar'], $sc->getParameterBag()->all(), '__construct() takes an array of parameters as its first argument');
     }
 
-    /**
-     * @dataProvider dataForTestCamelize
-     */
+    #[DataProvider('dataForTestCamelize')]
     public function testCamelize($id, $expected)
     {
         $this->assertEquals($expected, Container::camelize($id), \sprintf('Container::camelize("%s")', $id));
@@ -58,9 +57,7 @@ class ContainerTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider dataForTestUnderscore
-     */
+    #[DataProvider('dataForTestUnderscore')]
     public function testUnderscore($id, $expected)
     {
         $this->assertEquals($expected, Container::underscore($id), \sprintf('Container::underscore("%s")', $id));
@@ -138,12 +135,12 @@ class ContainerTest extends TestCase
     public function testGetServiceIds()
     {
         $sc = new Container();
-        $sc->set('foo', $obj = new \stdClass());
-        $sc->set('bar', $obj = new \stdClass());
+        $sc->set('foo', new \stdClass());
+        $sc->set('bar', new \stdClass());
         $this->assertEquals(['service_container', 'foo', 'bar'], $sc->getServiceIds(), '->getServiceIds() returns all defined service ids');
 
         $sc = new ProjectServiceContainer();
-        $sc->set('foo', $obj = new \stdClass());
+        $sc->set('foo', new \stdClass());
         $this->assertEquals(['service_container', 'bar', 'foo_bar', 'foo.baz', 'circular', 'throw_exception', 'throws_exception_on_service_configuration', 'internal_dependency', 'alias', 'foo'], $sc->getServiceIds(), '->getServiceIds() returns defined service ids by factory methods in the method map, followed by service ids defined by set()');
     }
 
@@ -230,8 +227,8 @@ class ContainerTest extends TestCase
     public function testGetThrowServiceNotFoundException()
     {
         $sc = new ProjectServiceContainer();
-        $sc->set('foo', $foo = new \stdClass());
-        $sc->set('baz', $foo = new \stdClass());
+        $sc->set('foo', new \stdClass());
+        $sc->set('baz', new \stdClass());
 
         try {
             $sc->get('foo1');
@@ -343,7 +340,7 @@ class ContainerTest extends TestCase
 
         try {
             $c->get('throw_exception');
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             // Do nothing.
         }
 
@@ -357,7 +354,7 @@ class ContainerTest extends TestCase
 
         try {
             $c->get('throws_exception_on_service_configuration');
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             // Do nothing.
         }
 
@@ -366,7 +363,7 @@ class ContainerTest extends TestCase
         // Retry, to make sure that get*Service() will be called.
         try {
             $c->get('throws_exception_on_service_configuration');
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             // Do nothing.
         }
         $this->assertFalse($c->initialized('throws_exception_on_service_configuration'));
@@ -428,9 +425,7 @@ class ContainerTest extends TestCase
         $container = new Container();
         $container->setParameter('env(FOO)', null);
         $container->set('container.env_var_processors_locator', new ServiceLocator([
-            'string' => static function () use ($container): EnvVarProcessor {
-                return new EnvVarProcessor($container);
-            },
+            'string' => static fn (): EnvVarProcessor => new EnvVarProcessor($container),
         ]));
         $container->compile();
 

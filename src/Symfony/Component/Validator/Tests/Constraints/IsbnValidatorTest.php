@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Validator\Constraints\Isbn;
 use Symfony\Component\Validator\Constraints\IsbnValidator;
 use Symfony\Component\Validator\Exception\UnexpectedValueException;
@@ -121,18 +122,18 @@ class IsbnValidatorTest extends ConstraintValidatorTestCase
 
     public function testNullIsValid()
     {
-        $constraint = new Isbn(true);
+        $constraint = new Isbn();
 
-        $this->validator->validate(null, $constraint);
+        $this->validate(null, $constraint);
 
         $this->assertNoViolation();
     }
 
     public function testEmptyStringIsValid()
     {
-        $constraint = new Isbn(true);
+        $constraint = new Isbn();
 
-        $this->validator->validate('', $constraint);
+        $this->validate('', $constraint);
 
         $this->assertNoViolation();
     }
@@ -140,46 +141,24 @@ class IsbnValidatorTest extends ConstraintValidatorTestCase
     public function testExpectsStringCompatibleType()
     {
         $this->expectException(UnexpectedValueException::class);
-        $constraint = new Isbn(true);
+        $constraint = new Isbn();
 
-        $this->validator->validate(new \stdClass(), $constraint);
+        $this->validate(new \stdClass(), $constraint);
     }
 
-    /**
-     * @dataProvider getValidIsbn10
-     */
+    #[DataProvider('getValidIsbn10')]
     public function testValidIsbn10($isbn)
     {
         $constraint = new Isbn(type: 'isbn10');
 
-        $this->validator->validate($isbn, $constraint);
+        $this->validate($isbn, $constraint);
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @group legacy
-     *
-     * @dataProvider getInvalidIsbn10
-     */
-    public function testInvalidIsbn10($isbn, $code)
-    {
-        $constraint = new Isbn([
-            'type' => 'isbn10',
-            'isbn10Message' => 'myMessage',
-        ]);
-
-        $this->validator->validate($isbn, $constraint);
-
-        $this->buildViolation('myMessage')
-            ->setParameter('{{ value }}', '"'.$isbn.'"')
-            ->setCode($code)
-            ->assertRaised();
-    }
-
     public function testInvalidIsbn10Named()
     {
-        $this->validator->validate(
+        $this->validate(
             '978-2723442282',
             new Isbn(type: Isbn::ISBN_10, isbn10Message: 'myMessage')
         );
@@ -190,41 +169,17 @@ class IsbnValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider getValidIsbn13
-     */
+    #[DataProvider('getValidIsbn13')]
     public function testValidIsbn13($isbn)
     {
         $constraint = new Isbn(type: 'isbn13');
 
-        $this->validator->validate($isbn, $constraint);
+        $this->validate($isbn, $constraint);
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @group legacy
-     *
-     * @dataProvider getInvalidIsbn13
-     */
-    public function testInvalidIsbn13($isbn, $code)
-    {
-        $constraint = new Isbn([
-            'type' => 'isbn13',
-            'isbn13Message' => 'myMessage',
-        ]);
-
-        $this->validator->validate($isbn, $constraint);
-
-        $this->buildViolation('myMessage')
-            ->setParameter('{{ value }}', '"'.$isbn.'"')
-            ->setCode($code)
-            ->assertRaised();
-    }
-
-    /**
-     * @dataProvider getInvalidIsbn13
-     */
+    #[DataProvider('getInvalidIsbn13')]
     public function testInvalidIsbn13Named($isbn, $code)
     {
         $constraint = new Isbn(
@@ -232,7 +187,7 @@ class IsbnValidatorTest extends ConstraintValidatorTestCase
             isbn13Message: 'myMessage',
         );
 
-        $this->validator->validate($isbn, $constraint);
+        $this->validate($isbn, $constraint);
 
         $this->buildViolation('myMessage')
             ->setParameter('{{ value }}', '"'.$isbn.'"')
@@ -240,26 +195,22 @@ class IsbnValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider getValidIsbn
-     */
+    #[DataProvider('getValidIsbn')]
     public function testValidIsbnAny($isbn)
     {
         $constraint = new Isbn();
 
-        $this->validator->validate($isbn, $constraint);
+        $this->validate($isbn, $constraint);
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @dataProvider getInvalidIsbn10
-     */
+    #[DataProvider('getInvalidIsbn10')]
     public function testInvalidIsbnAnyIsbn10($isbn, $code)
     {
         $constraint = new Isbn(bothIsbnMessage: 'myMessage');
 
-        $this->validator->validate($isbn, $constraint);
+        $this->validate($isbn, $constraint);
 
         // Too long for an ISBN-10, but not long enough for an ISBN-13
         if (Isbn::TOO_LONG_ERROR === $code) {
@@ -272,14 +223,12 @@ class IsbnValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider getInvalidIsbn13
-     */
+    #[DataProvider('getInvalidIsbn13')]
     public function testInvalidIsbnAnyIsbn13($isbn, $code)
     {
         $constraint = new Isbn(bothIsbnMessage: 'myMessage');
 
-        $this->validator->validate($isbn, $constraint);
+        $this->validate($isbn, $constraint);
 
         // Too short for an ISBN-13, but not short enough for an ISBN-10
         if (Isbn::TOO_SHORT_ERROR === $code) {

@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Validator\Constraints\Charset;
 use Symfony\Component\Validator\Constraints\CharsetValidator;
 use Symfony\Component\Validator\Exception\UnexpectedValueException;
@@ -24,22 +25,18 @@ class CharsetValidatorTest extends ConstraintValidatorTestCase
         return new CharsetValidator();
     }
 
-    /**
-     * @dataProvider provideValidValues
-     */
+    #[DataProvider('provideValidValues')]
     public function testEncodingIsValid(string|\Stringable $value, array|string $encodings)
     {
-        $this->validator->validate($value, new Charset(encodings: $encodings));
+        $this->validate($value, new Charset(encodings: $encodings));
 
         $this->assertNoViolation();
     }
 
-    /**
-     * @dataProvider provideInvalidValues
-     */
+    #[DataProvider('provideInvalidValues')]
     public function testInvalidValues(string $value, array|string $encodings)
     {
-        $this->validator->validate($value, new Charset(encodings: $encodings));
+        $this->validate($value, new Charset(encodings: $encodings));
 
         $this->buildViolation('The detected character encoding is invalid ({{ detected }}). Allowed encodings are {{ encodings }}.')
             ->setParameter('{{ detected }}', 'UTF-8')
@@ -48,15 +45,13 @@ class CharsetValidatorTest extends ConstraintValidatorTestCase
             ->assertRaised();
     }
 
-    /**
-     * @dataProvider provideInvalidTypes
-     */
+    #[DataProvider('provideInvalidTypes')]
     public function testNonStringValues(mixed $value)
     {
         $this->expectException(UnexpectedValueException::class);
         $this->expectExceptionMessageMatches('/Expected argument of type "string", ".*" given/');
 
-        $this->validator->validate($value, new Charset(encodings: ['UTF-8']));
+        $this->validate($value, new Charset(encodings: ['UTF-8']));
     }
 
     public static function provideValidValues()

@@ -11,8 +11,10 @@
 
 namespace Symfony\Component\CssSelector\Tests\XPath;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\CssSelector\Exception\ExpressionErrorException;
+use Symfony\Component\CssSelector\Exception\SyntaxErrorException;
 use Symfony\Component\CssSelector\Node\ElementNode;
 use Symfony\Component\CssSelector\Node\FunctionNode;
 use Symfony\Component\CssSelector\Parser\Parser;
@@ -22,18 +24,34 @@ use Symfony\Component\CssSelector\XPath\XPathExpr;
 
 class TranslatorTest extends TestCase
 {
-    /** @dataProvider getXpathLiteralTestData */
+    #[DataProvider('getXpathLiteralTestData')]
     public function testXpathLiteral($value, $literal)
     {
         $this->assertEquals($literal, Translator::getXpathLiteral($value));
     }
 
-    /** @dataProvider getCssToXPathTestData */
+    #[DataProvider('getCssToXPathTestData')]
     public function testCssToXPath($css, $xpath)
     {
         $translator = new Translator();
         $translator->registerExtension(new HtmlExtension($translator));
         $this->assertEquals($xpath, $translator->cssToXPath($css, ''));
+    }
+
+    #[DataProvider('getUnsupportedHasSelectorTestData')]
+    public function testHasUnsupportedSelector(string $css)
+    {
+        $translator = new Translator();
+        $translator->registerExtension(new HtmlExtension($translator));
+
+        $this->expectException(SyntaxErrorException::class);
+
+        $translator->cssToXPath($css, '');
+    }
+
+    public static function getUnsupportedHasSelectorTestData(): iterable
+    {
+        yield 'pseudo-element inside :has()' => ['div:has(::before)'];
     }
 
     public function testCssToXPathPseudoElement()
@@ -103,7 +121,7 @@ class TranslatorTest extends TestCase
         $translator->addAttributeMatching($xpath, '', '', '');
     }
 
-    /** @dataProvider getXmlLangTestData */
+    #[DataProvider('getXmlLangTestData')]
     public function testXmlLang($css, array $elementsId)
     {
         $translator = new Translator();
@@ -115,7 +133,7 @@ class TranslatorTest extends TestCase
         }
     }
 
-    /** @dataProvider getHtmlIdsTestData */
+    #[DataProvider('getHtmlIdsTestData')]
     public function testHtmlIds($css, array $elementsId)
     {
         $translator = new Translator();
@@ -136,7 +154,7 @@ class TranslatorTest extends TestCase
         libxml_use_internal_errors($internalErrors);
     }
 
-    /** @dataProvider getHtmlShakespearTestData */
+    #[DataProvider('getHtmlShakespearTestData')]
     public function testHtmlShakespear($css, $count)
     {
         $translator = new Translator();
@@ -156,18 +174,18 @@ class TranslatorTest extends TestCase
         $translator->registerExtension(new HtmlExtension($translator));
         $document = new \DOMDocument();
         $document->loadHTML(<<<'HTML'
-<html>
-  <body>
-    <p>
-      <span>A</span>
-    </p>
-    <p>
-      <span>B</span>
-      <span>C</span>
-    </p>
-  </body>
-</html>
-HTML
+            <html>
+              <body>
+                <p>
+                  <span>A</span>
+                </p>
+                <p>
+                  <span>B</span>
+                  <span>C</span>
+                </p>
+              </body>
+            </html>
+            HTML
         );
 
         $xpath = new \DOMXPath($document);
@@ -235,6 +253,22 @@ HTML
             [':scope', '*[1]'],
             ['e:is(section, article) h1', "e[(name() = 'section') or (name() = 'article')]/descendant-or-self::*/h1"],
             ['e:where(section, article) h1', "e[(name() = 'section') or (name() = 'article')]/descendant-or-self::*/h1"],
+            ['[hidden]:where(:is(span))', "*[(@hidden) and (name() = 'span')]"],
+            ['[hidden]:where(:not(span))', "*[(@hidden) and (not(name() = 'span'))]"],
+            ['[hidden]:is(span, div)', "*[(@hidden) and ((name() = 'span') or (name() = 'div'))]"],
+            ['[hidden]:where(:not([hidden=until-found]))', "*[(@hidden) and (not(@hidden = 'until-found'))]"],
+            ['div:has(> .foo)', "div[./*[@class and contains(concat(' ', normalize-space(@class), ' '), ' foo ')]]"],
+            ['div:has(~ .foo)', "div[following-sibling::*[@class and contains(concat(' ', normalize-space(@class), ' '), ' foo ')]]"],
+            ['div:has(+ .foo)', "div[following-sibling::*[(@class and contains(concat(' ', normalize-space(@class), ' '), ' foo ')) and (position() = 1)]]"],
+            ['div:has(.foo)', "div[descendant-or-self::*[@class and contains(concat(' ', normalize-space(@class), ' '), ' foo ')]]"],
+            ['div:has(#bar)', "div[descendant-or-self::*[@id = 'bar']]"],
+            ['div:has([data-x])', 'div[descendant-or-self::*[@data-x]]'],
+            ['div:has(.foo .bar)', "div[descendant-or-self::*[@class and contains(concat(' ', normalize-space(@class), ' '), ' foo ')]/descendant-or-self::*/*[@class and contains(concat(' ', normalize-space(@class), ' '), ' bar ')]]"],
+            ['div:has(:not(.foo))', "div[descendant-or-self::*[not(@class and contains(concat(' ', normalize-space(@class), ' '), ' foo '))]]"],
+            ['div:has(> .foo > .bar)', "div[./*[@class and contains(concat(' ', normalize-space(@class), ' '), ' foo ')]/*[@class and contains(concat(' ', normalize-space(@class), ' '), ' bar ')]]"],
+            ['div:has(.foo, .bar)', "div[(descendant-or-self::*[@class and contains(concat(' ', normalize-space(@class), ' '), ' foo ')]) or (descendant-or-self::*[@class and contains(concat(' ', normalize-space(@class), ' '), ' bar ')])]"],
+            ['div:has(> .foo, + .bar)', "div[(./*[@class and contains(concat(' ', normalize-space(@class), ' '), ' foo ')]) or (following-sibling::*[(@class and contains(concat(' ', normalize-space(@class), ' '), ' bar ')) and (position() = 1)])]"],
+            ['div:has(:scope > a)', 'div[descendant-or-self::*[1]/a]'],
         ];
     }
 
@@ -380,6 +414,8 @@ HTML
             ['a:where(:not(#name-anchor))', ['tag-anchor', 'nofollow-anchor']],
             ['a:not(:where(#name-anchor))', ['tag-anchor', 'nofollow-anchor']],
             ['a:where(:is(#name-anchor), :where(#tag-anchor))', ['name-anchor', 'tag-anchor']],
+            ['li:has(div, [foobar])', ['second-li']],
+            ['ol:has(> li[lang], > .nonexistent)', ['first-ol']],
             // HTML-specific
             [':link', ['link-href', 'tag-anchor', 'nofollow-anchor', 'area-href']],
             [':visited', []],

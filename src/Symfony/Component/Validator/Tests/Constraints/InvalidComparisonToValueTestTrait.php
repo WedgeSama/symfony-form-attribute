@@ -11,13 +11,12 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Intl\Util\IntlTestHelper;
 
 trait InvalidComparisonToValueTestTrait
 {
-    /**
-     * @dataProvider provideAllInvalidComparisons
-     */
+    #[DataProvider('provideAllInvalidComparisons')]
     public function testInvalidComparisonToValue($dirtyValue, $dirtyValueAsString, $comparedValue, $comparedValueString, $comparedValueType)
     {
         // Conversion of dates to string differs between ICU versions
@@ -29,7 +28,7 @@ trait InvalidComparisonToValueTestTrait
         $constraint = $this->createConstraint(['value' => $comparedValue]);
         $constraint->message = 'Constraint Message';
 
-        $this->validator->validate($dirtyValue, $constraint);
+        $this->validate($dirtyValue, $constraint);
 
         $this->buildViolation('Constraint Message')
             ->setParameter('{{ value }}', $dirtyValueAsString)
@@ -50,7 +49,7 @@ trait InvalidComparisonToValueTestTrait
 
         $this->setObject($object);
 
-        $this->validator->validate($dirtyValue, $constraint);
+        $this->validate($dirtyValue, $constraint);
 
         $this->buildViolation('Constraint Message')
             ->setParameter('{{ value }}', $dirtyValueAsString)

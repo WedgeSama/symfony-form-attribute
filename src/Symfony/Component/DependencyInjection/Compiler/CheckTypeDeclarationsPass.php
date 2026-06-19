@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\DependencyInjection\Compiler;
 
+use Symfony\Component\DependencyInjection\Argument\EnvClosure;
+use Symfony\Component\DependencyInjection\Argument\EnvClosureArgument;
 use Symfony\Component\DependencyInjection\Argument\IteratorArgument;
 use Symfony\Component\DependencyInjection\Argument\RewindableGenerator;
 use Symfony\Component\DependencyInjection\Argument\ServiceClosureArgument;
@@ -76,7 +78,7 @@ final class CheckTypeDeclarationsPass extends AbstractRecursivePass
 
     protected function processValue(mixed $value, bool $isRoot = false): mixed
     {
-        if (isset($this->skippedIds[$this->currentId])) {
+        if (isset($this->skippedIds[$this->currentId ?? ''])) {
             return $value;
         }
 
@@ -139,13 +141,14 @@ final class CheckTypeDeclarationsPass extends AbstractRecursivePass
             if (!$p->hasType() || $p->isVariadic()) {
                 continue;
             }
+            $key = $i;
             if (\array_key_exists($p->name, $values)) {
-                $i = $p->name;
+                $key = $p->name;
             } elseif (!\array_key_exists($i, $values)) {
                 continue;
             }
 
-            $this->checkType($checkedDefinition, $values[$i], $p, $envPlaceholderUniquePrefix);
+            $this->checkType($checkedDefinition, $values[$key], $p, $envPlaceholderUniquePrefix);
         }
 
         if ($reflectionFunction->isVariadic() && ($lastParameter = end($reflectionParameters))->hasType()) {
@@ -202,7 +205,7 @@ final class CheckTypeDeclarationsPass extends AbstractRecursivePass
         }
 
         if ('self' === $type) {
-            $type = $parameter->getDeclaringClass()->getName();
+            $type = $parameter->getDeclaringClass()->name;
         }
 
         if ('static' === $type) {
@@ -260,6 +263,8 @@ final class CheckTypeDeclarationsPass extends AbstractRecursivePass
                 $class = RewindableGenerator::class;
             } elseif ($value instanceof ServiceClosureArgument) {
                 $class = \Closure::class;
+            } elseif ($value instanceof EnvClosureArgument) {
+                $class = $value->isStringable() ? EnvClosure::class : \Closure::class;
             } elseif ($value instanceof ServiceLocatorArgument) {
                 $class = ServiceLocator::class;
             } elseif (\is_object($value)) {
@@ -274,7 +279,7 @@ final class CheckTypeDeclarationsPass extends AbstractRecursivePass
             return;
         }
 
-        if ('string' === $type && $class instanceof \Stringable) {
+        if ('string' === $type && is_a($class, \Stringable::class, true)) {
             return;
         }
 

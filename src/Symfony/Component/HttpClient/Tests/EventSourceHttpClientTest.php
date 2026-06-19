@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\HttpClient\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\Chunk\DataChunk;
 use Symfony\Component\HttpClient\Chunk\ErrorChunk;
@@ -19,6 +21,7 @@ use Symfony\Component\HttpClient\Chunk\LastChunk;
 use Symfony\Component\HttpClient\Chunk\ServerSentEvent;
 use Symfony\Component\HttpClient\EventSourceHttpClient;
 use Symfony\Component\HttpClient\Exception\EventSourceException;
+use Symfony\Component\HttpClient\Exception\TransportException;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\HttpClient\Response\ResponseStream;
@@ -29,11 +32,9 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  */
 class EventSourceHttpClientTest extends TestCase
 {
-    /**
-     * @testWith ["\n"]
-     *           ["\r"]
-     *           ["\r\n"]
-     */
+    #[TestWith(["\n"])]
+    #[TestWith(["\r"])]
+    #[TestWith(["\r\n"])]
     public function testGetServerSentEvents(string $sep)
     {
         $es = new EventSourceHttpClient(new MockHttpClient(function (string $method, string $url, array $options) use ($sep): MockResponse {
@@ -41,45 +42,45 @@ class EventSourceHttpClientTest extends TestCase
 
             return new MockResponse([
                 str_replace("\n", $sep, <<<TXT
-event: builderror
-id: 46
-data: {"foo": "bar"}
+                    event: builderror
+                    id: 46
+                    data: {"foo": "bar"}
 
-event: reload
-id: 47
-data: {}
+                    event: reload
+                    id: 47
+                    data: {}
 
-: this is a oneline comment
+                    : this is a oneline comment
 
-: this is a
-: multiline comment
+                    : this is a
+                    : multiline comment
 
-: comments are ignored
-event: reload
+                    : comments are ignored
+                    event: reload
 
-TXT
+                    TXT
                 ),
                 str_replace("\n", $sep, <<<TXT
-: anywhere
-id: 48
-data: {}
+                    : anywhere
+                    id: 48
+                    data: {}
 
-data: test
-data:test
-id: 49
-event: testEvent
+                    data: test
+                    data:test
+                    id: 49
+                    event: testEvent
 
 
-id: 50
-data: <tag>
-data
-data:   <foo />
-data
-data: </tag>
+                    id: 50
+                    data: <tag>
+                    data
+                    data:   <foo />
+                    data
+                    data: </tag>
 
-id: 60
-data
-TXT
+                    id: 60
+                    data
+                    TXT
                 ),
             ], [
                 'canceled' => false,
@@ -112,7 +113,7 @@ TXT
     {
         $chunk = new DataChunk(0, '');
         $response = new MockResponse('', ['canceled' => false, 'http_method' => 'POST', 'url' => 'http://localhost:8080/events', 'response_headers' => ['content-type: text/event-stream']]);
-        $responseStream = new ResponseStream((function () use ($response, $chunk) {
+        $responseStream = new ResponseStream((static function () use ($response, $chunk) {
             yield $response => new FirstChunk();
             yield $response => $chunk;
             yield $response => new ErrorChunk(0, 'timeout');
@@ -125,9 +126,16 @@ TXT
             return true;
         };
 
-        $httpClient = $this->createMock(HttpClientInterface::class);
+        $httpClient = $this->createStub(HttpClientInterface::class);
 
-        $httpClient->method('request')->with('POST', 'http://localhost:8080/events', $this->callback($hasCorrectHeaders))->willReturn($response);
+        $httpClient->method('request')
+            ->willReturnCallback(function (string $method, string $url, array $options = []) use ($hasCorrectHeaders, $response) {
+                $this->assertSame('POST', $method);
+                $this->assertSame('http://localhost:8080/events', $url);
+                $this->assertTrue($hasCorrectHeaders($options));
+
+                return $response;
+            });
 
         $httpClient->method('stream')->willReturn($responseStream);
 
@@ -135,14 +143,12 @@ TXT
         $res = $es->connect('http://localhost:8080/events', ['body' => 'mybody'], 'POST');
     }
 
-    /**
-     * @dataProvider contentTypeProvider
-     */
+    #[DataProvider('contentTypeProvider')]
     public function testContentType($contentType, $expected)
     {
         $chunk = new DataChunk(0, '');
         $response = new MockResponse('', ['canceled' => false, 'http_method' => 'GET', 'url' => 'http://localhost:8080/events', 'response_headers' => ['content-type: '.$contentType]]);
-        $responseStream = new ResponseStream((function () use ($response, $chunk) {
+        $responseStream = new ResponseStream((static function () use ($response, $chunk) {
             yield $response => new FirstChunk();
             yield $response => $chunk;
             yield $response => new ErrorChunk(0, 'timeout');
@@ -154,8 +160,15 @@ TXT
             return true;
         };
 
-        $httpClient = $this->createMock(HttpClientInterface::class);
-        $httpClient->method('request')->with('GET', 'http://localhost:8080/events', $this->callback($hasCorrectHeaders))->willReturn($response);
+        $httpClient = $this->createStub(HttpClientInterface::class);
+        $httpClient->method('request')
+            ->willReturnCallback(function (string $method, string $url, array $options = []) use ($hasCorrectHeaders, $response) {
+                $this->assertSame('GET', $method);
+                $this->assertSame('http://localhost:8080/events', $url);
+                $this->assertTrue($hasCorrectHeaders($options));
+
+                return $response;
+            });
 
         $httpClient->method('stream')->willReturn($responseStream);
 
@@ -175,6 +188,69 @@ TXT
                 return;
             }
         }
+    }
+
+    public function testFirstChunkIsYieldedAfterTimeout()
+    {
+        $es = new EventSourceHttpClient(new MockHttpClient([
+            // Throws TransportException before any chunks are sent, emulating a stream timeout
+            new MockResponse('', [
+                'response_headers' => ['content-type: text/event-stream'],
+                'error' => 'timeout',
+            ]),
+            new MockResponse("data: hello\n\n", [
+                'response_headers' => ['content-type: text/event-stream'],
+            ]),
+        ]), reconnectionTime: 0.0);
+
+        $res = $es->connect('http://localhost:8080/events');
+
+        $expected = [
+            new FirstChunk(),
+            new ServerSentEvent("data: hello\n\n"),
+            new LastChunk(13),
+        ];
+
+        foreach ($es->stream($res) as $chunk) {
+            $this->assertEquals(array_shift($expected), $chunk);
+        }
+
+        $this->assertSame([], $expected);
+    }
+
+    public function testFirstChunkIsNotYieldedAgainAfterReconnect()
+    {
+        $es = new EventSourceHttpClient(new MockHttpClient([
+            new MockResponse((static function (): \Generator {
+                yield "id: 1\nevent: message\ndata: hello\n\n";
+
+                throw new TransportException('Connection dropped');
+            })(), [
+                'response_headers' => ['content-type: text/event-stream'],
+            ]),
+            new MockResponse("id: 2\nevent: message\ndata: world\n\n", [
+                'response_headers' => ['content-type: text/event-stream'],
+            ]),
+        ]), reconnectionTime: 0.0);
+
+        $res = $es->connect('http://localhost:8080/events');
+
+        $events = [];
+        foreach ($es->stream($res) as $chunk) {
+            if ($chunk->isTimeout()) {
+                continue;
+            }
+
+            if ($chunk->isLast()) {
+                break;
+            }
+
+            if ($chunk instanceof ServerSentEvent) {
+                $events[] = [$chunk->getId(), trim($chunk->getData())];
+            }
+        }
+
+        $this->assertSame([['1', 'hello'], ['2', 'world']], $events);
     }
 
     public static function contentTypeProvider()

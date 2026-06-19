@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Constraints;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Validator\Constraints\PasswordStrength;
 use Symfony\Component\Validator\Constraints\PasswordStrengthValidator;
 use Symfony\Component\Validator\Test\ConstraintValidatorTestCase;
@@ -33,12 +34,10 @@ class PasswordStrengthValidatorWithClosureTest extends ConstraintValidatorTestCa
         });
     }
 
-    /**
-     * @dataProvider getValidValues
-     */
+    #[DataProvider('getValidValues')]
     public function testValidValues(string|\Stringable $value, int $expectedStrength)
     {
-        $this->validator->validate($value, new PasswordStrength(minScore: $expectedStrength));
+        $this->validate($value, new PasswordStrength(minScore: $expectedStrength));
 
         $this->assertNoViolation();
 
@@ -46,7 +45,7 @@ class PasswordStrengthValidatorWithClosureTest extends ConstraintValidatorTestCa
             return;
         }
 
-        $this->validator->validate($value, new PasswordStrength(minScore: $expectedStrength + 1));
+        $this->validate($value, new PasswordStrength(minScore: $expectedStrength + 1));
 
         $this->buildViolation('The password strength is too low. Please use a stronger password.')
             ->setCode(PasswordStrength::PASSWORD_STRENGTH_ERROR)
@@ -62,12 +61,10 @@ class PasswordStrengthValidatorWithClosureTest extends ConstraintValidatorTestCa
         yield [new StringableValue('HeloW0rld'), PasswordStrength::STRENGTH_WEAK];
     }
 
-    /**
-     * @dataProvider provideInvalidConstraints
-     */
+    #[DataProvider('provideInvalidConstraints')]
     public function testThePasswordIsWeak(PasswordStrength $constraint, string $password, string $expectedMessage, string $expectedCode, string $strength)
     {
-        $this->validator->validate($password, $constraint);
+        $this->validate($password, $constraint);
 
         $this->buildViolation($expectedMessage)
             ->setCode($expectedCode)

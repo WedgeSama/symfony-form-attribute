@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Cache\Tests\Adapter;
 
+use PHPUnit\Framework\Attributes\Group;
 use Psr\Cache\CacheItemInterface;
 use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
@@ -18,9 +19,7 @@ use Symfony\Component\Cache\Adapter\NullAdapter;
 use Symfony\Component\Cache\Adapter\PhpArrayAdapter;
 use Symfony\Component\Filesystem\Filesystem;
 
-/**
- * @group time-sensitive
- */
+#[Group('time-sensitive')]
 class PhpArrayAdapterTest extends AdapterTestCase
 {
     protected $skippedTests = [
@@ -58,6 +57,7 @@ class PhpArrayAdapterTest extends AdapterTestCase
 
         'testDefaultLifeTime' => 'PhpArrayAdapter does not allow configuring a default lifetime.',
         'testPrune' => 'PhpArrayAdapter just proxies',
+        'testClearWithInvalidPrefix' => 'PhpArrayAdapter does not validate the prefix.',
 
         'testNamespaces' => 'PhpArrayAdapter does not support namespaces.',
     ];
@@ -80,7 +80,7 @@ class PhpArrayAdapterTest extends AdapterTestCase
 
     public function createCachePool(int $defaultLifetime = 0, ?string $testMethod = null): CacheItemPoolInterface
     {
-        if ('testGetMetadata' === $testMethod || 'testClearPrefix' === $testMethod) {
+        if ('testGetMetadata' === $testMethod || 'testClearPrefix' === $testMethod || 'testClearPrefixWithUnderscore' === $testMethod) {
             return new PhpArrayAdapter(self::$file, new FilesystemAdapter());
         }
 

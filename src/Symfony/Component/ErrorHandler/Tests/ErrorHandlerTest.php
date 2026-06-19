@@ -11,6 +11,8 @@
 
 namespace Symfony\Component\ErrorHandler\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\WithoutErrorHandler;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
@@ -18,6 +20,8 @@ use Psr\Log\NullLogger;
 use Symfony\Component\ErrorHandler\BufferingLogger;
 use Symfony\Component\ErrorHandler\Error\ClassNotFoundError;
 use Symfony\Component\ErrorHandler\Error\FatalError;
+use Symfony\Component\ErrorHandler\Error\MaxExecutionTimeError;
+use Symfony\Component\ErrorHandler\Error\OutOfMemoryError;
 use Symfony\Component\ErrorHandler\ErrorHandler;
 use Symfony\Component\ErrorHandler\Exception\SilencedErrorContext;
 use Symfony\Component\ErrorHandler\Tests\Fixtures\ErrorHandlerThatUsesThePreviousOne;
@@ -37,6 +41,7 @@ class ErrorHandlerTest extends TestCase
         $r->setValue(null, 0);
     }
 
+    #[WithoutErrorHandler]
     public function testRegister()
     {
         $handler = ErrorHandler::register();
@@ -67,9 +72,10 @@ class ErrorHandlerTest extends TestCase
         }
     }
 
+    #[WithoutErrorHandler]
     public function testErrorGetLast()
     {
-        $logger = $this->createMock(LoggerInterface::class);
+        $logger = new NullLogger();
         $handler = ErrorHandler::register();
         $handler->setDefaultLogger($logger);
         $handler->screamAt(\E_ALL);
@@ -89,6 +95,7 @@ class ErrorHandlerTest extends TestCase
         }
     }
 
+    #[WithoutErrorHandler]
     public function testNotice()
     {
         ErrorHandler::register();
@@ -125,6 +132,7 @@ class ErrorHandlerTest extends TestCase
         $that->assertSame('', $foo.$foo.$bar);
     }
 
+    #[WithoutErrorHandler]
     public function testFailureCall()
     {
         $this->expectException(\ErrorException::class);
@@ -133,6 +141,7 @@ class ErrorHandlerTest extends TestCase
         ErrorHandler::call('fopen', 'unknown.txt', 'r');
     }
 
+    #[WithoutErrorHandler]
     public function testCallRestoreErrorHandler()
     {
         $prev = set_error_handler('var_dump');
@@ -149,6 +158,7 @@ class ErrorHandlerTest extends TestCase
         $this->assertSame('var_dump', $prev);
     }
 
+    #[WithoutErrorHandler]
     public function testCallErrorExceptionInfo()
     {
         try {
@@ -167,6 +177,7 @@ class ErrorHandlerTest extends TestCase
         }
     }
 
+    #[WithoutErrorHandler]
     public function testSuccessCall()
     {
         touch($filename = tempnam(sys_get_temp_dir(), 'sf_error_handler_'));
@@ -176,6 +187,7 @@ class ErrorHandlerTest extends TestCase
         unlink($filename);
     }
 
+    #[WithoutErrorHandler]
     public function testConstruct()
     {
         try {
@@ -188,10 +200,11 @@ class ErrorHandlerTest extends TestCase
         }
     }
 
+    #[WithoutErrorHandler]
     public function testDefaultLogger()
     {
         try {
-            $logger = $this->createMock(LoggerInterface::class);
+            $logger = new NullLogger();
             $handler = ErrorHandler::register();
 
             $handler->setDefaultLogger($logger, \E_NOTICE);
@@ -214,10 +227,6 @@ class ErrorHandlerTest extends TestCase
                 \E_CORE_ERROR => [null, LogLevel::CRITICAL],
             ];
 
-            if (\PHP_VERSION_ID < 80400) {
-                $loggers[\E_STRICT] = [null, LogLevel::ERROR];
-            }
-
             $this->assertSame($loggers, $handler->setLoggers([]));
         } finally {
             restore_error_handler();
@@ -225,6 +234,7 @@ class ErrorHandlerTest extends TestCase
         }
     }
 
+    #[WithoutErrorHandler]
     public function testHandleError()
     {
         try {
@@ -330,6 +340,7 @@ class ErrorHandlerTest extends TestCase
         }
     }
 
+    #[WithoutErrorHandler]
     public function testHandleErrorWithAnonymousClass()
     {
         $anonymousObject = new class extends \stdClass {
@@ -348,6 +359,7 @@ class ErrorHandlerTest extends TestCase
         $this->assertSame('User Warning: foo stdClass@anonymous bar', $e->getMessage());
     }
 
+    #[WithoutErrorHandler]
     public function testHandleDeprecation()
     {
         $logArgCheck = function ($level, $message, $context) {
@@ -370,9 +382,8 @@ class ErrorHandlerTest extends TestCase
         @$handler->handleError(\E_USER_DEPRECATED, 'Foo deprecation', __FILE__, __LINE__, []);
     }
 
-    /**
-     * @dataProvider handleExceptionProvider
-     */
+    #[DataProvider('handleExceptionProvider')]
+    #[WithoutErrorHandler]
     public function testHandleException(string $expectedMessage, \Throwable $exception, ?string $enhancedMessage = null)
     {
         try {
@@ -433,6 +444,7 @@ class ErrorHandlerTest extends TestCase
         ];
     }
 
+    #[WithoutErrorHandler]
     public function testBootstrappingLogger()
     {
         $bootLogger = new BufferingLogger();
@@ -454,10 +466,6 @@ class ErrorHandlerTest extends TestCase
             \E_ERROR => [$bootLogger, LogLevel::CRITICAL],
             \E_CORE_ERROR => [$bootLogger, LogLevel::CRITICAL],
         ];
-
-        if (\PHP_VERSION_ID < 80400) {
-            $loggers[\E_STRICT] = [$bootLogger, LogLevel::ERROR];
-        }
 
         $this->assertSame($loggers, $handler->setLoggers([]));
 
@@ -487,6 +495,7 @@ class ErrorHandlerTest extends TestCase
         $handler->setLoggers([\E_DEPRECATED => [$mockLogger, LogLevel::WARNING]]);
     }
 
+    #[WithoutErrorHandler]
     public function testSettingLoggerWhenExceptionIsBuffered()
     {
         $bootLogger = new BufferingLogger();
@@ -499,13 +508,14 @@ class ErrorHandlerTest extends TestCase
             ->method('log')
             ->with(LogLevel::CRITICAL, 'Uncaught Exception: Foo message', ['exception' => $exception]);
 
-        $handler->setExceptionHandler(function () use ($handler, $mockLogger) {
+        $handler->setExceptionHandler(static function () use ($handler, $mockLogger) {
             $handler->setDefaultLogger($mockLogger);
         });
 
         $handler->handleException($exception);
     }
 
+    #[WithoutErrorHandler]
     public function testHandleFatalError()
     {
         try {
@@ -541,12 +551,91 @@ class ErrorHandlerTest extends TestCase
         }
     }
 
+    #[WithoutErrorHandler]
+    public function testHandleFatalErrorCreatesOutOfMemoryError()
+    {
+        try {
+            $handler = ErrorHandler::register();
+
+            $error = [
+                'type' => \E_ERROR,
+                'message' => 'Allowed memory size of 536870912 bytes exhausted (tried to allocate 4096 bytes)',
+                'file' => 'bar',
+                'line' => 123,
+            ];
+
+            $handler->setExceptionHandler(static function () use (&$args) {
+                $args = \func_get_args();
+            });
+
+            $handler->handleFatalError($error);
+
+            $this->assertInstanceOf(OutOfMemoryError::class, $args[0]);
+        } finally {
+            restore_error_handler();
+            restore_exception_handler();
+        }
+    }
+
+    #[WithoutErrorHandler]
+    public function testHandleFatalErrorCreatesOutOfMemoryErrorForOutOfMemoryMessage()
+    {
+        try {
+            $handler = ErrorHandler::register();
+
+            $error = [
+                'type' => \E_ERROR,
+                'message' => 'Out of memory (allocated 536870912) (tried to allocate 4096 bytes)',
+                'file' => 'bar',
+                'line' => 123,
+            ];
+
+            $handler->setExceptionHandler(static function () use (&$args) {
+                $args = \func_get_args();
+            });
+
+            $handler->handleFatalError($error);
+
+            $this->assertInstanceOf(OutOfMemoryError::class, $args[0]);
+        } finally {
+            restore_error_handler();
+            restore_exception_handler();
+        }
+    }
+
+    #[WithoutErrorHandler]
+    public function testHandleFatalErrorCreatesMaxExecutionTimeError()
+    {
+        try {
+            $handler = ErrorHandler::register();
+
+            $error = [
+                'type' => \E_ERROR,
+                'message' => 'Maximum execution time of 30 seconds exceeded',
+                'file' => 'bar',
+                'line' => 123,
+            ];
+
+            $handler->setExceptionHandler(static function () use (&$args) {
+                $args = \func_get_args();
+            });
+
+            $handler->handleFatalError($error);
+
+            $this->assertInstanceOf(MaxExecutionTimeError::class, $args[0]);
+        } finally {
+            restore_error_handler();
+            restore_exception_handler();
+        }
+    }
+
+    #[WithoutErrorHandler]
     public function testHandleErrorException()
     {
         $exception = new \Error("Class 'IReallyReallyDoNotExistAnywhereInTheRepositoryISwear' not found");
 
         $handler = new ErrorHandler();
-        $handler->setExceptionHandler(function () use (&$args) {
+        $handler->setExceptionHandler(static function () use (&$args) {
             $args = \func_get_args();
         });
 
@@ -556,11 +645,12 @@ class ErrorHandlerTest extends TestCase
         $this->assertStringStartsWith("Attempted to load class \"IReallyReallyDoNotExistAnywhereInTheRepositoryISwear\" from the global namespace.\nDid you forget a \"use\" statement", $args[0]->getMessage());
     }
 
+    #[WithoutErrorHandler]
     public function testCustomExceptionHandler()
     {
         $this->expectException(\Exception::class);
         $handler = new ErrorHandler();
-        $handler->setExceptionHandler(function ($e) use ($handler) {
+        $handler->setExceptionHandler(static function ($e) use ($handler) {
             $handler->setExceptionHandler(null);
             $handler->handleException($e);
         });
@@ -568,6 +658,7 @@ class ErrorHandlerTest extends TestCase
         $handler->handleException(new \Exception());
     }
 
+    #[WithoutErrorHandler]
     public function testRenderException()
     {
         $handler = new ErrorHandler();
@@ -580,9 +671,48 @@ class ErrorHandlerTest extends TestCase
         self::assertStringContainsString('Class Foo not found', $response);
     }
 
-    /**
-     * @dataProvider errorHandlerWhenLoggingProvider
-     */
+    #[WithoutErrorHandler]
+    public function testRenderExceptionWithOutOfMemoryError()
+    {
+        $handler = new ErrorHandler();
+        $handler->setExceptionHandler([$handler, 'renderException']);
+
+        $error = [
+            'type' => \E_ERROR,
+            'message' => 'Allowed memory size of 536870912 bytes exhausted',
+            'file' => 'foo.php',
+            'line' => 1,
+        ];
+
+        ob_start();
+        $handler->handleException(new OutOfMemoryError('', 0, $error));
+        $response = ob_get_clean();
+
+        self::assertStringContainsString('Allowed memory size of 536870912 bytes exhausted', $response);
+    }
+
+    #[WithoutErrorHandler]
+    public function testRenderExceptionWithMaxExecutionTimeError()
+    {
+        $handler = new ErrorHandler();
+        $handler->setExceptionHandler([$handler, 'renderException']);
+
+        $error = [
+            'type' => \E_ERROR,
+            'message' => 'Maximum execution time of 30 seconds exceeded',
+            'file' => 'foo.php',
+            'line' => 1,
+        ];
+
+        ob_start();
+        $handler->handleException(new MaxExecutionTimeError('', 0, $error));
+        $response = ob_get_clean();
+
+        self::assertStringContainsString('Maximum execution time of 30 seconds exceeded', $response);
+    }
+
+    #[DataProvider('errorHandlerWhenLoggingProvider')]
+    #[WithoutErrorHandler]
     public function testErrorHandlerWhenLogging(bool $previousHandlerWasDefined, bool $loggerSetsAnotherHandler, bool $nextHandlerIsDefined)
     {
         try {
@@ -634,13 +764,14 @@ class ErrorHandlerTest extends TestCase
         }
     }
 
+    #[WithoutErrorHandler]
     public function testAssertQuietEval()
     {
         if ('-1' === \ini_get('zend.assertions')) {
             $this->markTestSkipped('zend.assertions is forcibly disabled');
         }
 
-        set_error_handler(function () {});
+        set_error_handler(static function () {});
         $ini = [
             ini_set('zend.assertions', 1),
             ini_set('assert.active', 1),
@@ -675,6 +806,7 @@ class ErrorHandlerTest extends TestCase
         $this->assertSame('Warning: assert(): assert(false) failed', $logs[0][1]);
     }
 
+    #[WithoutErrorHandler]
     public function testHandleTriggerDeprecation()
     {
         try {

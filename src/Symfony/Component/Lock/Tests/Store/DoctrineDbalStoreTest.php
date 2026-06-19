@@ -14,20 +14,26 @@ namespace Symfony\Component\Lock\Tests\Store;
 use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
-use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Exception\TableNotFoundException;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
+use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\DefaultSchemaManagerFactory;
 use Doctrine\DBAL\Schema\Schema;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
+use Symfony\Component\Lock\Exception\LockConflictedException;
 use Symfony\Component\Lock\Key;
 use Symfony\Component\Lock\PersistingStoreInterface;
 use Symfony\Component\Lock\Store\DoctrineDbalStore;
+use Symfony\Component\Lock\Test\AbstractStoreTestCase;
 
 /**
  * @author Jérémy Derussé <jeremy@derusse.com>
- *
- * @requires extension pdo_sqlite
  */
+#[RequiresPhpExtension('pdo_sqlite')]
 class DoctrineDbalStoreTest extends AbstractStoreTestCase
 {
     use ExpiringStoreTestTrait;
@@ -58,9 +64,7 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
     public function getStore(): PersistingStoreInterface
     {
         $config = new Configuration();
-        if (class_exists(DefaultSchemaManagerFactory::class)) {
-            $config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
-        }
+        $config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
 
         return new DoctrineDbalStore(DriverManager::getConnection(['driver' => 'pdo_sqlite', 'path' => self::$dbFile], $config));
     }
@@ -70,9 +74,7 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
         $this->markTestSkipped('Pdo expects a TTL greater than 1 sec. Simulating a slow network is too hard');
     }
 
-    /**
-     * @dataProvider provideDsnWithSQLite
-     */
+    #[DataProvider('provideDsnWithSQLite')]
     public function testDsnWithSQLite(string $dsn, ?string $file = null)
     {
         $key = new Key(__METHOD__);
@@ -97,11 +99,8 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
         yield 'SQLite in memory' => ['sqlite://localhost/:memory:'];
     }
 
-    /**
-     * @requires extension pdo_pgsql
-     *
-     * @group integration
-     */
+    #[RequiresPhpExtension('pdo_pgsql')]
+    #[Group('integration')]
     public function testDsnWithPostgreSQL()
     {
         if (!$host = getenv('POSTGRES_HOST')) {
@@ -121,24 +120,109 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
         }
     }
 
+    #[RequiresPhpExtension('pdo_pgsql')]
+    #[Group('integration')]
+    public function testSaveDoesNotAbortSurroundingPostgresTransactionOnLockContention()
+    {
+        if (!$host = getenv('POSTGRES_HOST')) {
+            $this->markTestSkipped('Missing POSTGRES_HOST env variable');
+        }
+
+        $config = new Configuration();
+        if (class_exists(DefaultSchemaManagerFactory::class)) {
+            $config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
+        }
+        $conn = DriverManager::getConnection([
+            'driver' => 'pdo_pgsql',
+            'host' => $host,
+            'user' => 'postgres',
+            'password' => 'password',
+        ], $config);
+
+        $resource = uniqid(__METHOD__, true);
+
+        try {
+            $store = new DoctrineDbalStore($conn);
+            $store->createTable();
+
+            $owner = new Key($resource);
+            $store->save($owner);
+
+            $conn->beginTransaction();
+
+            $contender = new Key($resource);
+            try {
+                $store->save($contender);
+                $this->fail('LockConflictedException was expected.');
+            } catch (LockConflictedException) {
+                // expected
+            }
+
+            $this->assertSame('alive', $conn->fetchOne("SELECT 'alive'"), 'The surrounding transaction must remain usable after a lock conflict.');
+            $conn->rollBack();
+        } finally {
+            if ($conn->isTransactionActive()) {
+                $conn->rollBack();
+            }
+            $conn->executeStatement('DROP TABLE IF EXISTS lock_keys');
+        }
+    }
+
+    #[RequiresPhpExtension('pdo_pgsql')]
+    #[Group('integration')]
+    public function testSavePostgresRefreshesSameKeyInsideTransaction()
+    {
+        if (!$host = getenv('POSTGRES_HOST')) {
+            $this->markTestSkipped('Missing POSTGRES_HOST env variable');
+        }
+
+        $config = new Configuration();
+        if (class_exists(DefaultSchemaManagerFactory::class)) {
+            $config->setSchemaManagerFactory(new DefaultSchemaManagerFactory());
+        }
+        $conn = DriverManager::getConnection([
+            'driver' => 'pdo_pgsql',
+            'host' => $host,
+            'user' => 'postgres',
+            'password' => 'password',
+        ], $config);
+
+        try {
+            $store = new DoctrineDbalStore($conn);
+            $store->createTable();
+
+            $key = new Key(uniqid(__METHOD__, true));
+            $store->save($key);
+
+            $conn->beginTransaction();
+            $store->save($key);
+            $this->assertTrue($store->exists($key));
+            $conn->rollBack();
+        } finally {
+            if ($conn->isTransactionActive()) {
+                $conn->rollBack();
+            }
+            $conn->executeStatement('DROP TABLE IF EXISTS lock_keys');
+        }
+    }
+
     /**
      * @param class-string<AbstractPlatform>
-     *
-     * @dataProvider providePlatforms
      */
+    #[DataProvider('providePlatforms')]
     public function testCreatesTableInTransaction(string $platform)
     {
         $conn = $this->createMock(Connection::class);
 
         $series = [
-            [$this->stringContains('INSERT INTO'), $this->createMock(TableNotFoundException::class)],
+            [$this->stringContains('INSERT INTO'), $this->createStub(TableNotFoundException::class)],
             [$this->matches('create sql stmt'), 1],
             [$this->stringContains('INSERT INTO'), 1],
         ];
 
         $conn->expects($this->atLeast(3))
             ->method('executeStatement')
-            ->willReturnCallback(function ($sql) use (&$series) {
+            ->willReturnCallback(static function ($sql) use (&$series) {
                 if ([$constraint, $return] = array_shift($series)) {
                     $constraint->evaluate($sql);
                 }
@@ -154,7 +238,7 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
         $conn->method('isTransactionActive')
             ->willReturn(true);
 
-        $platform = $this->createMock($platform);
+        $platform = $this->createStub($platform);
         $platform->method('getCreateTablesSQL')
             ->willReturn(['create sql stmt']);
 
@@ -170,26 +254,9 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
 
     public static function providePlatforms(): \Generator
     {
-        yield [\Doctrine\DBAL\Platforms\PostgreSQLPlatform::class];
-
-        // DBAL < 4
-        if (class_exists(\Doctrine\DBAL\Platforms\PostgreSQL94Platform::class)) {
-            yield [\Doctrine\DBAL\Platforms\PostgreSQL94Platform::class];
-        }
-
-        if (interface_exists(Exception::class)) {
-            // DBAL 4+
-            yield [\Doctrine\DBAL\Platforms\SQLitePlatform::class];
-        } else {
-            yield [\Doctrine\DBAL\Platforms\SqlitePlatform::class];
-        }
-
-        yield [\Doctrine\DBAL\Platforms\SQLServerPlatform::class];
-
-        // DBAL < 4
-        if (class_exists(\Doctrine\DBAL\Platforms\SQLServer2012Platform::class)) {
-            yield [\Doctrine\DBAL\Platforms\SQLServer2012Platform::class];
-        }
+        yield [PostgreSQLPlatform::class];
+        yield [SQLitePlatform::class];
+        yield [SQLServerPlatform::class];
     }
 
     public function testTableCreationInTransactionNotSupported()
@@ -197,13 +264,13 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
         $conn = $this->createMock(Connection::class);
 
         $series = [
-            [$this->stringContains('INSERT INTO'), $this->createMock(TableNotFoundException::class)],
+            [$this->stringContains('INSERT INTO'), $this->createStub(TableNotFoundException::class)],
             [$this->stringContains('INSERT INTO'), 1],
         ];
 
         $conn->expects($this->atLeast(2))
             ->method('executeStatement')
-            ->willReturnCallback(function ($sql) use (&$series) {
+            ->willReturnCallback(static function ($sql) use (&$series) {
                 if ([$constraint, $return] = array_shift($series)) {
                     $constraint->evaluate($sql);
                 }
@@ -219,7 +286,7 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
         $conn->method('isTransactionActive')
             ->willReturn(true);
 
-        $platform = $this->createMock(AbstractPlatform::class);
+        $platform = $this->createStub(AbstractPlatform::class);
         $platform->method('getCreateTablesSQL')
             ->willReturn(['create sql stmt']);
 
@@ -238,14 +305,14 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
         $conn = $this->createMock(Connection::class);
 
         $series = [
-            [$this->stringContains('INSERT INTO'), $this->createMock(TableNotFoundException::class)],
+            [$this->stringContains('INSERT INTO'), $this->createStub(TableNotFoundException::class)],
             [$this->matches('create sql stmt'), 1],
             [$this->stringContains('INSERT INTO'), 1],
         ];
 
         $conn->expects($this->atLeast(3))
             ->method('executeStatement')
-            ->willReturnCallback(function ($sql) use (&$series) {
+            ->willReturnCallback(static function ($sql) use (&$series) {
                 if ([$constraint, $return] = array_shift($series)) {
                     $constraint->evaluate($sql);
                 }
@@ -261,7 +328,7 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
         $conn->method('isTransactionActive')
             ->willReturn(false);
 
-        $platform = $this->createMock(AbstractPlatform::class);
+        $platform = $this->createStub(AbstractPlatform::class);
         $platform->method('getCreateTablesSQL')
             ->willReturn(['create sql stmt']);
 
@@ -277,35 +344,32 @@ class DoctrineDbalStoreTest extends AbstractStoreTestCase
 
     public function testConfigureSchemaDifferentDatabase()
     {
-        $conn = $this->createMock(Connection::class);
-        $someFunction = fn () => false;
-        $schema = new Schema();
-
+        $conn = $this->createStub(Connection::class);
         $dbalStore = new DoctrineDbalStore($conn);
-        $dbalStore->configureSchema($schema, $someFunction);
+        $schema = $dbalStore->configureSchema(new Schema(), static fn () => false);
         $this->assertFalse($schema->hasTable('lock_keys'));
     }
 
     public function testConfigureSchemaSameDatabase()
     {
-        $conn = $this->createMock(Connection::class);
-        $someFunction = fn () => true;
-        $schema = new Schema();
-
+        $conn = $this->createStub(Connection::class);
         $dbalStore = new DoctrineDbalStore($conn);
-        $dbalStore->configureSchema($schema, $someFunction);
+        $schema = $dbalStore->configureSchema(new Schema(), static fn () => true);
         $this->assertTrue($schema->hasTable('lock_keys'));
     }
 
     public function testConfigureSchemaTableExists()
     {
-        $conn = $this->createMock(Connection::class);
-        $schema = new Schema();
-        $schema->createTable('lock_keys');
+        if (method_exists(Schema::class, 'edit')) {
+            $schema = (new Schema())->edit()->addTable(new \Doctrine\DBAL\Schema\Table('lock_keys'))->create();
+        } else {
+            $schema = new Schema();
+            $schema->createTable('lock_keys');
+        }
 
+        $conn = $this->createStub(Connection::class);
         $dbalStore = new DoctrineDbalStore($conn);
-        $someFunction = fn () => true;
-        $dbalStore->configureSchema($schema, $someFunction);
+        $schema = $dbalStore->configureSchema($schema, static fn () => true);
         $table = $schema->getTable('lock_keys');
         $this->assertSame([], $table->getColumns(), 'The table was not overwritten');
     }

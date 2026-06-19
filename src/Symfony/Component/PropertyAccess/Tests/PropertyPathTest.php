@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\PropertyAccess\Tests;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
 use Symfony\Component\PropertyAccess\PropertyPath;
@@ -49,9 +50,7 @@ class PropertyPathTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider providePathsContainingUnexpectedCharacters
-     */
+    #[DataProvider('providePathsContainingUnexpectedCharacters')]
     public function testUnexpectedCharacters(string $path)
     {
         $this->expectException(InvalidPropertyPathException::class);
@@ -203,5 +202,28 @@ class PropertyPathTest extends TestCase
         $this->expectException(\OutOfBoundsException::class);
 
         $propertyPath->isIndex(-1);
+    }
+
+    #[DataProvider('provideAppendPaths')]
+    public function testAppend(string $basePath, string $subPath, string $expectedPath, string $message)
+    {
+        $this->assertSame($expectedPath, PropertyPath::append($basePath, $subPath), $message);
+    }
+
+    public static function provideAppendPaths(): iterable
+    {
+        return [
+            ['foo', '', 'foo', 'It returns the basePath if subPath is empty'],
+            ['', 'bar', 'bar', 'It returns the subPath if basePath is empty'],
+            ['', '', '', 'It returns an empty string when both paths are empty'],
+            ['foo', 'bar', 'foo.bar', 'It appends the subPath to the basePath'],
+            ['foo', '[bar]', 'foo[bar]', 'It does not include the dot separator if subPath uses the array notation'],
+            ['', '[bar]', '[bar]', 'It returns the bracketed subPath when basePath is empty'],
+            ['foo[0]', '[1]', 'foo[0][1]', 'It chains bracketed segments without a dot separator'],
+            ['foo[0]', 'bar', 'foo[0].bar', 'It joins a property after a bracketed segment with a dot'],
+            ['foo', '\\[bar]', 'foo.\\[bar]', 'It treats an escaped opening bracket as a property and uses the dot separator'],
+            ['0', 'bar', '0.bar', 'Leading zeros are kept.'],
+            ['0', '1', '0.1', 'Leading zeros are kept on subPath too.'],
+        ];
     }
 }

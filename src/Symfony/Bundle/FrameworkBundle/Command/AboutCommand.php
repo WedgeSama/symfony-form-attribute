@@ -11,6 +11,7 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Command;
 
+use Composer\InstalledVersions;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Helper;
@@ -36,11 +37,11 @@ class AboutCommand extends Command
     {
         $this
             ->setHelp(<<<'EOT'
-The <info>%command.name%</info> command displays information about the current Symfony project.
+                The <info>%command.name%</info> command displays information about the current Symfony project.
 
-The <info>PHP</info> section displays important configuration that could affect your application. The values might
-be different between web and CLI.
-EOT
+                The <info>PHP</info> section displays important configuration that could affect your application. The values might
+                be different between web and CLI.
+                EOT
             )
         ;
     }
@@ -52,18 +53,15 @@ EOT
         /** @var KernelInterface $kernel */
         $kernel = $this->getApplication()->getKernel();
 
-        if (method_exists($kernel, 'getBuildDir')) {
-            $buildDir = $kernel->getBuildDir();
-        } else {
-            $buildDir = $kernel->getCacheDir();
-        }
+        $buildDir = $kernel->getBuildDir();
+        $shareDir = $kernel->getShareDir();
 
         $xdebugMode = getenv('XDEBUG_MODE') ?: \ini_get('xdebug.mode');
 
         $rows = [
             ['<info>Symfony</>'],
             new TableSeparator(),
-            ['Version', Kernel::VERSION],
+            ['Version', class_exists(InstalledVersions::class) ? InstalledVersions::getPrettyVersion('symfony/http-kernel') ?? InstalledVersions::getPrettyVersion('symfony/symfony') : Kernel::MAJOR_VERSION.'.'.Kernel::MINOR_VERSION],
             ['Long-Term Support', 4 === Kernel::MINOR_VERSION ? 'Yes' : 'No'],
             ['End of maintenance', Kernel::END_OF_MAINTENANCE.(self::isExpired(Kernel::END_OF_MAINTENANCE) ? ' <error>Expired</>' : ' (<comment>'.self::daysBeforeExpiration(Kernel::END_OF_MAINTENANCE).'</>)')],
             ['End of life', Kernel::END_OF_LIFE.(self::isExpired(Kernel::END_OF_LIFE) ? ' <error>Expired</>' : ' (<comment>'.self::daysBeforeExpiration(Kernel::END_OF_LIFE).'</>)')],
@@ -76,6 +74,7 @@ EOT
             ['Charset', $kernel->getCharset()],
             ['Cache directory', self::formatPath($kernel->getCacheDir(), $kernel->getProjectDir()).' (<comment>'.self::formatFileSize($kernel->getCacheDir()).'</>)'],
             ['Build directory', self::formatPath($buildDir, $kernel->getProjectDir()).' (<comment>'.self::formatFileSize($buildDir).'</>)'],
+            ['Share directory', null === $shareDir ? 'none' : self::formatPath($shareDir, $kernel->getProjectDir()).' (<comment>'.self::formatFileSize($shareDir).'</>)'],
             ['Log directory', self::formatPath($kernel->getLogDir(), $kernel->getProjectDir()).' (<comment>'.self::formatFileSize($kernel->getLogDir()).'</>)'],
             new TableSeparator(),
             ['<info>PHP</>'],

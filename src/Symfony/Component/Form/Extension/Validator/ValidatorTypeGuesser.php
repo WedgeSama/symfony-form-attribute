@@ -207,7 +207,7 @@ class ValidatorTypeGuesser implements FormTypeGuesserInterface
                 break;
 
             case Type::class:
-                if (\in_array($constraint->type, ['double', 'float', 'numeric', 'real'])) {
+                if (\in_array($constraint->type, ['double', 'float', 'numeric', 'real'], true)) {
                     return new ValueGuess(null, Guess::MEDIUM_CONFIDENCE);
                 }
                 break;
@@ -249,7 +249,7 @@ class ValidatorTypeGuesser implements FormTypeGuesserInterface
                 break;
 
             case Type::class:
-                if (\in_array($constraint->type, ['double', 'float', 'numeric', 'real'])) {
+                if (\in_array($constraint->type, ['double', 'float', 'numeric', 'real'], true)) {
                     return new ValueGuess(null, Guess::MEDIUM_CONFIDENCE);
                 }
                 break;
@@ -261,6 +261,8 @@ class ValidatorTypeGuesser implements FormTypeGuesserInterface
     /**
      * Iterates over the constraints of a property, executes a constraints on
      * them and returns the best guess.
+     *
+     * @param-immediately-invoked-callable $closure
      *
      * @param \Closure $closure      The closure that returns a guess
      *                               for a given constraint

@@ -11,6 +11,7 @@
 
 namespace Symfony\Component\Validator\Tests\Validator;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
 use Symfony\Component\Translation\IdentityTranslator;
@@ -38,8 +39,10 @@ use Symfony\Component\Validator\ConstraintViolationInterface;
 use Symfony\Component\Validator\Context\ExecutionContextFactory;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use Symfony\Component\Validator\Exception\ConstraintDefinitionException;
+use Symfony\Component\Validator\Exception\InvalidArgumentException;
 use Symfony\Component\Validator\Exception\NoSuchMetadataException;
 use Symfony\Component\Validator\Exception\RuntimeException;
+use Symfony\Component\Validator\Exception\ValidatorException;
 use Symfony\Component\Validator\Mapping\ClassMetadata;
 use Symfony\Component\Validator\Mapping\Factory\MetadataFactoryInterface;
 use Symfony\Component\Validator\ObjectInitializerInterface;
@@ -541,9 +544,7 @@ class RecursiveValidatorTest extends TestCase
         $this->validate($entity);
     }
 
-    /**
-     * @dataProvider getConstraintMethods
-     */
+    #[DataProvider('getConstraintMethods')]
     public function testArrayReference($constraintMethod)
     {
         $entity = new Entity();
@@ -582,9 +583,7 @@ class RecursiveValidatorTest extends TestCase
         $this->assertNull($violations[0]->getCode());
     }
 
-    /**
-     * @dataProvider getConstraintMethods
-     */
+    #[DataProvider('getConstraintMethods')]
     public function testRecursiveArrayReference($constraintMethod)
     {
         $entity = new Entity();
@@ -628,12 +627,12 @@ class RecursiveValidatorTest extends TestCase
         $entity = new Entity();
         $entity->reference = ['key' => new Reference()];
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message %param%', ['%param%' => 'value']);
         };
 
         $this->metadata->addPropertyConstraint('reference', new Callback(
-            callback: function () {},
+            callback: static function () {},
             groups: ['Group'],
         ));
         $this->referenceMetadata->addConstraint(new Callback(
@@ -647,15 +646,13 @@ class RecursiveValidatorTest extends TestCase
         $this->assertCount(0, $violations);
     }
 
-    /**
-     * @dataProvider getConstraintMethods
-     */
+    #[DataProvider('getConstraintMethods')]
     public function testArrayTraversalCannotBeDisabled($constraintMethod)
     {
         $entity = new Entity();
         $entity->reference = ['key' => new Reference()];
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message %param%', ['%param%' => 'value']);
         };
 
@@ -670,15 +667,13 @@ class RecursiveValidatorTest extends TestCase
         $this->assertCount(1, $violations);
     }
 
-    /**
-     * @dataProvider getConstraintMethods
-     */
+    #[DataProvider('getConstraintMethods')]
     public function testRecursiveArrayTraversalCannotBeDisabled($constraintMethod)
     {
         $entity = new Entity();
         $entity->reference = [2 => ['key' => new Reference()]];
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message %param%', ['%param%' => 'value']);
         };
 
@@ -694,9 +689,7 @@ class RecursiveValidatorTest extends TestCase
         $this->assertCount(1, $violations);
     }
 
-    /**
-     * @dataProvider getConstraintMethods
-     */
+    #[DataProvider('getConstraintMethods')]
     public function testIgnoreScalarsDuringArrayTraversal($constraintMethod)
     {
         $entity = new Entity();
@@ -710,9 +703,7 @@ class RecursiveValidatorTest extends TestCase
         $this->assertCount(0, $violations);
     }
 
-    /**
-     * @dataProvider getConstraintMethods
-     */
+    #[DataProvider('getConstraintMethods')]
     public function testIgnoreNullDuringArrayTraversal($constraintMethod)
     {
         $entity = new Entity();
@@ -769,7 +760,7 @@ class RecursiveValidatorTest extends TestCase
         $entity = new Entity();
         $entity->reference = new \ArrayIterator(['key' => new Reference()]);
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message %param%', ['%param%' => 'value']);
         };
 
@@ -862,7 +853,7 @@ class RecursiveValidatorTest extends TestCase
             $context->addViolation('Message %param%', ['%param%' => 'value']);
         };
 
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Other violation');
         };
 
@@ -920,7 +911,7 @@ class RecursiveValidatorTest extends TestCase
             $context->addViolation('Message %param%', ['%param%' => 'value']);
         };
 
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Other violation');
         };
 
@@ -969,7 +960,7 @@ class RecursiveValidatorTest extends TestCase
             $context->addViolation('Message %param%', ['%param%' => 'value']);
         };
 
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Other violation');
         };
 
@@ -1018,7 +1009,7 @@ class RecursiveValidatorTest extends TestCase
         $entity->reference = new Reference();
         $entity->reference2 = $entity->reference;
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message');
         };
 
@@ -1038,7 +1029,7 @@ class RecursiveValidatorTest extends TestCase
         $entity->reference = new Reference();
         $entity->reference2 = new Reference();
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message');
         };
 
@@ -1056,7 +1047,7 @@ class RecursiveValidatorTest extends TestCase
     {
         $entity = new Entity();
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message');
         };
 
@@ -1079,7 +1070,7 @@ class RecursiveValidatorTest extends TestCase
     {
         $entity = new Entity();
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message');
         };
 
@@ -1098,19 +1089,60 @@ class RecursiveValidatorTest extends TestCase
         $this->assertCount(2, $violations);
     }
 
+    #[DataProvider('getInvalidGroups')]
+    public function testValidateInvalidGroup($invalidGroup, string $type)
+    {
+        $entity = new Entity();
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage(\sprintf('The validation groups must be an array of strings or "Symfony\Component\Validator\Constraints\GroupSequence" instances, but the array contains "%s".', $type));
+
+        $this->validate($entity, null, ['Group 1', $invalidGroup]);
+    }
+
+    public static function getInvalidGroups()
+    {
+        yield 'null' => [null, 'null'];
+        yield 'int' => [123, 'int'];
+        yield 'object' => [new \stdClass(), 'stdClass'];
+    }
+
+    public function testValidateWithStringableGroup()
+    {
+        $entity = new Entity();
+
+        $this->metadata->addConstraint(new Callback(
+            callback: static function ($value, ExecutionContextInterface $context) {
+                $context->addViolation('Message');
+            },
+            groups: ['Group 1'],
+        ));
+
+        $stringableGroup = new class() implements \Stringable {
+            public function __toString(): string
+            {
+                return 'Group 1';
+            }
+        };
+
+        $violations = $this->validate($entity, null, [$stringableGroup]);
+
+        $this->assertCount(1, $violations);
+    }
+
     public function testReplaceDefaultGroupByGroupSequenceObject()
     {
         $entity = new Entity();
 
-        $callback1 = function ($value, ExecutionContextInterface $context) {
+        $callback1 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in Group 2');
         };
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in Group 3');
         };
 
         $this->metadata->addConstraint(new Callback(
-            callback: function () {},
+            callback: static function () {},
             groups: ['Group 1'],
         ));
         $this->metadata->addConstraint(new Callback(
@@ -1136,15 +1168,15 @@ class RecursiveValidatorTest extends TestCase
     {
         $entity = new Entity();
 
-        $callback1 = function ($value, ExecutionContextInterface $context) {
+        $callback1 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in Group 2');
         };
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in Group 3');
         };
 
         $this->metadata->addConstraint(new Callback(
-            callback: function () {},
+            callback: static function () {},
             groups: ['Group 1'],
         ));
         $this->metadata->addConstraint(new Callback(
@@ -1171,10 +1203,10 @@ class RecursiveValidatorTest extends TestCase
         $entity = new Entity();
         $entity->reference = new Reference();
 
-        $callback1 = function ($value, ExecutionContextInterface $context) {
+        $callback1 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in Default group');
         };
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in group sequence');
         };
 
@@ -1202,10 +1234,10 @@ class RecursiveValidatorTest extends TestCase
     {
         $entity = new Entity();
 
-        $callback1 = function ($value, ExecutionContextInterface $context) {
+        $callback1 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in other group');
         };
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in group sequence');
         };
 
@@ -1228,23 +1260,21 @@ class RecursiveValidatorTest extends TestCase
         $this->assertSame('Violation in other group', $violations[0]->getMessage());
     }
 
-    /**
-     * @dataProvider getTestReplaceDefaultGroup
-     */
+    #[DataProvider('getTestReplaceDefaultGroup')]
     public function testReplaceDefaultGroup($sequence, array $assertViolations)
     {
         $entity = new GroupSequenceProviderEntity($sequence);
 
-        $callback1 = function ($value, ExecutionContextInterface $context) {
+        $callback1 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in Group 2');
         };
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Violation in Group 3');
         };
 
         $metadata = new ClassMetadata($entity::class);
         $metadata->addConstraint(new Callback(
-            callback: function () {},
+            callback: static function () {},
             groups: ['Group 1'],
         ));
         $metadata->addConstraint(new Callback(
@@ -1341,15 +1371,15 @@ class RecursiveValidatorTest extends TestCase
     {
         $entity = new Entity();
 
-        $callback1 = function ($value, ExecutionContextInterface $context) {
+        $callback1 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message 1');
         };
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message 2');
         };
 
         $this->metadata->addConstraint(new Callback(
-            callback: function () {},
+            callback: static function () {},
             groups: ['Group 1'],
         ));
         $this->metadata->addConstraint(new Callback(
@@ -1374,10 +1404,10 @@ class RecursiveValidatorTest extends TestCase
         $entity = new Entity();
         $entity->reference = new Reference();
 
-        $callback1 = function ($value, ExecutionContextInterface $context) {
+        $callback1 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Reference violation 1');
         };
-        $callback2 = function ($value, ExecutionContextInterface $context) {
+        $callback2 = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Reference violation 2');
         };
 
@@ -1627,7 +1657,7 @@ class RecursiveValidatorTest extends TestCase
         $entity = new Entity();
         $traversable = new \ArrayIterator(['key' => $entity]);
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message');
         };
 
@@ -1805,7 +1835,7 @@ class RecursiveValidatorTest extends TestCase
         $entity = new CascadingEntity();
         $entity->requiredChild = new CascadedChild();
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->buildViolation('Invalid child')
                 ->atPath('name')
                 ->addViolation()
@@ -1835,7 +1865,7 @@ class RecursiveValidatorTest extends TestCase
     {
         $entity = new Entity();
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->buildViolation('Message %param%')
                 ->setParameter('%param%', 'value')
                 ->setInvalidValue('Invalid value')
@@ -1864,7 +1894,7 @@ class RecursiveValidatorTest extends TestCase
     {
         $entity = new Entity();
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message');
         };
 
@@ -1883,7 +1913,7 @@ class RecursiveValidatorTest extends TestCase
     {
         $entity = new Entity();
 
-        $callback = function ($value, ExecutionContextInterface $context) {
+        $callback = static function ($value, ExecutionContextInterface $context) {
             $context->addViolation('Message');
         };
 
@@ -1937,7 +1967,7 @@ class RecursiveValidatorTest extends TestCase
         $initializer1->expects($this->once())
             ->method('initialize')
             ->with($entity)
-            ->willReturnCallback(function ($object) {
+            ->willReturnCallback(static function ($object) {
                 $object->initialized = true;
             });
 
@@ -2361,6 +2391,48 @@ class RecursiveValidatorTest extends TestCase
             ->validate($entity->getLastName(), $constraint);
 
         $this->assertCount(2, $validator->getViolations());
+    }
+
+    public function testValidatePropertyWithExistenceCheckThrowsOnNonExistentProperty()
+    {
+        $this->expectException(ValidatorException::class);
+        $this->expectExceptionMessage(\sprintf('The property "nonExistent" does not exist in class "%s".', Entity::class));
+
+        $translator = new IdentityTranslator();
+        $translator->setLocale('en');
+
+        $contextFactory = new ExecutionContextFactory($translator);
+        $validatorFactory = new ConstraintValidatorFactory();
+
+        $validator = new RecursiveValidator($contextFactory, $this->metadataFactory, $validatorFactory, [], null, true);
+
+        $entity = new Entity();
+        $validator->validateProperty($entity, 'nonExistent');
+    }
+
+    public function testValidatePropertyValueWithExistenceCheckThrowsOnNonExistentProperty()
+    {
+        $this->expectException(ValidatorException::class);
+        $this->expectExceptionMessage('The property "nonExistent" does not exist');
+
+        $translator = new IdentityTranslator();
+        $translator->setLocale('en');
+
+        $contextFactory = new ExecutionContextFactory($translator);
+        $validatorFactory = new ConstraintValidatorFactory();
+
+        $validator = new RecursiveValidator($contextFactory, $this->metadataFactory, $validatorFactory, [], null, true);
+
+        $entity = new Entity();
+        $validator->validatePropertyValue($entity, 'nonExistent', 'foo');
+    }
+
+    public function testValidatePropertyWithoutExistenceCheckDoesNotThrowOnNonExistentProperty()
+    {
+        $entity = new Entity();
+        $violations = $this->validator->validateProperty($entity, 'nonExistent');
+
+        $this->assertCount(0, $violations);
     }
 }
 

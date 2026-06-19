@@ -18,6 +18,7 @@ use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 use Symfony\Component\DependencyInjection\Loader\PhpFileLoader;
+use Symfony\Component\VarExporter\DeepCloner;
 
 /**
  * @author Nicolas Grekas <p@tchwork.com>
@@ -80,14 +81,14 @@ class ServicesConfigurator extends AbstractConfigurator
             }
 
             $id = \sprintf('.%d_%s', ++$this->anonymousCount, preg_replace('/^.*\\\\/', '', $class).'~'.$this->anonymousHash);
-        } elseif (!$defaults->isPublic() || !$defaults->isPrivate()) {
-            $definition->setPublic($defaults->isPublic() && !$defaults->isPrivate());
+        } else {
+            $definition->setPublic($defaults->isPublic());
         }
 
         $definition->setAutowired($defaults->isAutowired());
         $definition->setAutoconfigured($defaults->isAutoconfigured());
         // deep clone, to avoid multiple process of the same instance in the passes
-        $definition->setBindings(unserialize(serialize($defaults->getBindings())));
+        $definition->setBindings(DeepCloner::deepClone($defaults->getBindings()));
         $definition->setChanges([]);
 
         $configurator = new ServiceConfigurator($this->container, $this->instanceof, true, $this, $definition, $id, $defaults->getTags(), $this->path);
@@ -115,9 +116,7 @@ class ServicesConfigurator extends AbstractConfigurator
     {
         $ref = static::processValue($referencedId, true);
         $alias = new Alias((string) $ref);
-        if (!$this->defaults->isPublic() || !$this->defaults->isPrivate()) {
-            $alias->setPublic($this->defaults->isPublic());
-        }
+        $alias->setPublic($this->defaults->isPublic());
         $this->container->setAlias($id, $alias);
 
         return new AliasConfigurator($this, $alias);
@@ -148,7 +147,7 @@ class ServicesConfigurator extends AbstractConfigurator
      *
      * @param InlineServiceConfigurator[]|ReferenceConfigurator[] $services
      */
-    final public function stack(string $id, array $services): AliasConfigurator
+    final public function stack(string $id, array $services): StackConfigurator
     {
         foreach ($services as $i => $service) {
             if ($service instanceof InlineServiceConfigurator) {
@@ -166,14 +165,13 @@ class ServicesConfigurator extends AbstractConfigurator
             }
         }
 
-        $alias = $this->alias($id, '');
-        $alias->definition = $this->set($id)
+        $definition = $this->set($id)
             ->parent('')
             ->args($services)
             ->tag('container.stack')
             ->definition;
 
-        return $alias;
+        return new StackConfigurator($this, $definition);
     }
 
     /**

@@ -12,7 +12,6 @@
 namespace Symfony\Bundle\TwigBundle\Tests\Functional;
 
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
-use Symfony\Bundle\FrameworkBundle\Test\HttpClientAssertionsTrait;
 use Symfony\Bundle\TwigBundle\Tests\TestCase;
 use Symfony\Bundle\TwigBundle\TwigBundle;
 use Symfony\Component\Config\Loader\LoaderInterface;
@@ -44,7 +43,7 @@ class NoTemplatingEntryTest extends TestCase
 
     protected function deleteTempDir()
     {
-        if (!file_exists($dir = sys_get_temp_dir().'/'.Kernel::VERSION.'/NoTemplatingEntryKernel')) {
+        if (!file_exists($dir = sys_get_temp_dir().'/NoTemplatingEntryKernel')) {
             return;
         }
 
@@ -62,18 +61,11 @@ class NoTemplatingEntryKernel extends Kernel
 
     public function registerContainerConfiguration(LoaderInterface $loader): void
     {
-        $loader->load(function (ContainerBuilder $container) {
+        $loader->load(static function (ContainerBuilder $container) {
             $config = [
-                'annotations' => false,
-                'http_method_override' => false,
-                'php_errors' => ['log' => true],
                 'secret' => '$ecret',
                 'form' => ['enabled' => false],
             ];
-
-            if (trait_exists(HttpClientAssertionsTrait::class)) {
-                $config['handle_all_throwables'] = true;
-            }
 
             $container
                 ->loadFromExtension('framework', $config)
@@ -87,11 +79,11 @@ class NoTemplatingEntryKernel extends Kernel
 
     public function getCacheDir(): string
     {
-        return sys_get_temp_dir().'/'.Kernel::VERSION.'/NoTemplatingEntryKernel/cache/'.$this->environment;
+        return sys_get_temp_dir().'/NoTemplatingEntryKernel/cache/'.$this->environment;
     }
 
     public function getLogDir(): string
     {
-        return sys_get_temp_dir().'/'.Kernel::VERSION.'/NoTemplatingEntryKernel/logs';
+        return sys_get_temp_dir().'/NoTemplatingEntryKernel/logs';
     }
 }
